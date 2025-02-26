@@ -34,6 +34,8 @@ import {
   Grid,
   GridItem,
   Divider,
+  useBreakpointValue,
+  SimpleGrid,
 } from '@chakra-ui/react';
 import { generateTradingSignals, type TradingSignal, type TopSignals } from '../services/tradingSignals';
 
@@ -89,35 +91,44 @@ const SignalCard: React.FC<{ signal: TradingSignal }> = ({ signal }) => {
   const borderColor = useColorModeValue('gray.700', 'gray.600');
   const textColor = useColorModeValue('gray.300', 'gray.200');
   const cardHoverBg = useColorModeValue('gray.700', 'gray.800');
+  
+  const isMobile = useBreakpointValue({ base: true, md: false });
 
   return (
     <Box 
-      p={6} 
+      p={isMobile ? 4 : 6} 
       bg={bgColor} 
       borderRadius="xl" 
       borderWidth={1} 
       borderColor={borderColor}
       transition="all 0.3s"
       _hover={{ bg: cardHoverBg, transform: 'translateY(-2px)', boxShadow: 'xl' }}
+      width="100%"
     >
-      <VStack spacing={6} align="stretch">
-        <HStack justify="space-between">
-          <VStack align="start" spacing={1}>
-            <Text fontSize="2xl" fontWeight="bold" color="white">
-              {signal.symbol}
-            </Text>
-            <StatGroup>
-              <Stat>
-                <StatNumber color="white">${signal.price.toLocaleString()}</StatNumber>
-                <StatHelpText color={signal.priceChange24h >= 0 ? "green.400" : "red.400"}>
-                  <StatArrow type={signal.priceChange24h >= 0 ? 'increase' : 'decrease'} />
-                  {Math.abs(signal.priceChange24h).toFixed(2)}%
-                </StatHelpText>
-              </Stat>
-            </StatGroup>
-          </VStack>
-          <SignalBadge signal={signal.signal} />
-        </HStack>
+      <VStack spacing={isMobile ? 4 : 6} align="stretch">
+        <VStack spacing={2} align="stretch">
+          <HStack justify="space-between" wrap={isMobile ? "wrap" : "nowrap"}>
+            <VStack align="start" spacing={1} flex={1}>
+              <Text fontSize={isMobile ? "xl" : "2xl"} fontWeight="bold" color="white">
+                {signal.symbol}
+              </Text>
+              <StatGroup>
+                <Stat>
+                  <StatNumber fontSize={isMobile ? "lg" : "xl"} color="white">
+                    ${signal.price.toLocaleString()}
+                  </StatNumber>
+                  <StatHelpText color={signal.priceChange24h >= 0 ? "green.400" : "red.400"}>
+                    <StatArrow type={signal.priceChange24h >= 0 ? 'increase' : 'decrease'} />
+                    {Math.abs(signal.priceChange24h).toFixed(2)}%
+                  </StatHelpText>
+                </Stat>
+              </StatGroup>
+            </VStack>
+            <Box mt={isMobile ? 2 : 0}>
+              <SignalBadge signal={signal.signal} />
+            </Box>
+          </HStack>
+        </VStack>
 
         <Box>
           <Text fontSize="sm" mb={2} color={textColor}>
@@ -137,7 +148,7 @@ const SignalCard: React.FC<{ signal: TradingSignal }> = ({ signal }) => {
 
         <Accordion allowMultiple>
           <AccordionItem border="none">
-            <AccordionButton px={0}>
+            <AccordionButton px={0} py={2}>
               <Box flex="1" textAlign="left">
                 <Text fontSize="sm" fontWeight="medium" color={textColor}>
                   Razones ({signal.reasons.length})
@@ -145,7 +156,7 @@ const SignalCard: React.FC<{ signal: TradingSignal }> = ({ signal }) => {
               </Box>
               <AccordionIcon color={textColor} />
             </AccordionButton>
-            <AccordionPanel pb={4}>
+            <AccordionPanel pb={4} px={2}>
               <VStack align="start" spacing={2}>
                 {signal.reasons.map((reason, index) => (
                   <Text key={index} fontSize="sm" color={textColor}>• {reason}</Text>
@@ -155,7 +166,7 @@ const SignalCard: React.FC<{ signal: TradingSignal }> = ({ signal }) => {
           </AccordionItem>
 
           <AccordionItem border="none">
-            <AccordionButton px={0}>
+            <AccordionButton px={0} py={2}>
               <Box flex="1" textAlign="left">
                 <Text fontSize="sm" fontWeight="medium" color={textColor}>
                   Análisis Técnico
@@ -163,109 +174,60 @@ const SignalCard: React.FC<{ signal: TradingSignal }> = ({ signal }) => {
               </Box>
               <AccordionIcon color={textColor} />
             </AccordionButton>
-            <AccordionPanel pb={4}>
-              <Grid templateColumns="repeat(2, 1fr)" gap={4}>
-                <GridItem>
-                  <VStack align="start" spacing={3}>
-                    <Box>
-                      <Text color={textColor} fontSize="sm">RSI</Text>
+            <AccordionPanel pb={4} px={2}>
+              <SimpleGrid columns={isMobile ? 1 : 2} spacing={4}>
+                <VStack align="start" spacing={3}>
+                  <Box width="100%">
+                    <Text color={textColor} fontSize="sm">RSI</Text>
+                    <IndicatorValue 
+                      value={signal.technicalAnalysis.indicators.rsi} 
+                      type={signal.technicalAnalysis.indicators.rsi > 70 ? 'negative' : signal.technicalAnalysis.indicators.rsi < 30 ? 'positive' : 'neutral'} 
+                    />
+                  </Box>
+                  <Box width="100%">
+                    <Text color={textColor} fontSize="sm">Stochastic K/D</Text>
+                    <HStack>
                       <IndicatorValue 
-                        value={signal.technicalAnalysis.indicators.rsi} 
-                        type={signal.technicalAnalysis.indicators.rsi > 70 ? 'negative' : signal.technicalAnalysis.indicators.rsi < 30 ? 'positive' : 'neutral'} 
+                        value={signal.technicalAnalysis.indicators.stochastic.k} 
+                        type={signal.technicalAnalysis.indicators.stochastic.k > 80 ? 'negative' : signal.technicalAnalysis.indicators.stochastic.k < 20 ? 'positive' : 'neutral'} 
                       />
-                    </Box>
-                    <Box>
-                      <Text color={textColor} fontSize="sm">Stochastic K/D</Text>
-                      <HStack>
+                      <Text color={textColor}>/</Text>
+                      <IndicatorValue 
+                        value={signal.technicalAnalysis.indicators.stochastic.d} 
+                        type={signal.technicalAnalysis.indicators.stochastic.d > 80 ? 'negative' : signal.technicalAnalysis.indicators.stochastic.d < 20 ? 'positive' : 'neutral'} 
+                      />
+                    </HStack>
+                  </Box>
+                </VStack>
+                <VStack align="start" spacing={3}>
+                  <Box width="100%">
+                    <Text color={textColor} fontSize="sm">EMAs</Text>
+                    <VStack align="start" spacing={1}>
+                      <HStack justify="space-between" width="100%">
+                        <Text color={textColor} fontSize="xs">EMA9:</Text>
                         <IndicatorValue 
-                          value={signal.technicalAnalysis.indicators.stochastic.k} 
-                          type={signal.technicalAnalysis.indicators.stochastic.k > 80 ? 'negative' : signal.technicalAnalysis.indicators.stochastic.k < 20 ? 'positive' : 'neutral'} 
-                        />
-                        <Text color={textColor}>/</Text>
-                        <IndicatorValue 
-                          value={signal.technicalAnalysis.indicators.stochastic.d} 
-                          type={signal.technicalAnalysis.indicators.stochastic.d > 80 ? 'negative' : signal.technicalAnalysis.indicators.stochastic.d < 20 ? 'positive' : 'neutral'} 
-                        />
-                      </HStack>
-                    </Box>
-                    <Box>
-                      <Text color={textColor} fontSize="sm">ADX</Text>
-                      <HStack>
-                        <IndicatorValue 
-                          value={signal.technicalAnalysis.indicators.adx.adx} 
-                          type={signal.technicalAnalysis.indicators.adx.adx > 25 ? 'positive' : 'neutral'} 
-                        />
-                        <Text color={textColor}>DI+/DI-:</Text>
-                        <IndicatorValue 
-                          value={signal.technicalAnalysis.indicators.adx.plusDI} 
-                          type="positive" 
-                        />
-                        <Text color={textColor}>/</Text>
-                        <IndicatorValue 
-                          value={signal.technicalAnalysis.indicators.adx.minusDI} 
-                          type="negative" 
+                          value={signal.technicalAnalysis.indicators.ema.ema9} 
+                          type={signal.technicalAnalysis.indicators.ema.ema9 > signal.price ? 'negative' : 'positive'} 
                         />
                       </HStack>
-                    </Box>
-                  </VStack>
-                </GridItem>
-                <GridItem>
-                  <VStack align="start" spacing={3}>
-                    <Box>
-                      <Text color={textColor} fontSize="sm">EMAs</Text>
-                      <VStack align="start" spacing={1}>
-                        <HStack>
-                          <Text color={textColor} fontSize="xs">EMA9:</Text>
-                          <IndicatorValue 
-                            value={signal.technicalAnalysis.indicators.ema.ema9} 
-                            type={signal.technicalAnalysis.indicators.ema.ema9 > signal.price ? 'negative' : 'positive'} 
-                          />
-                        </HStack>
-                        <HStack>
-                          <Text color={textColor} fontSize="xs">EMA21:</Text>
-                          <IndicatorValue 
-                            value={signal.technicalAnalysis.indicators.ema.ema21} 
-                            type={signal.technicalAnalysis.indicators.ema.ema21 > signal.price ? 'negative' : 'positive'} 
-                          />
-                        </HStack>
-                        <HStack>
-                          <Text color={textColor} fontSize="xs">EMA50:</Text>
-                          <IndicatorValue 
-                            value={signal.technicalAnalysis.indicators.ema.ema50} 
-                            type={signal.technicalAnalysis.indicators.ema.ema50 > signal.price ? 'negative' : 'positive'} 
-                          />
-                        </HStack>
-                      </VStack>
-                    </Box>
-                    <Box>
-                      <Text color={textColor} fontSize="sm">MACD</Text>
-                      <VStack align="start" spacing={1}>
-                        <HStack>
-                          <Text color={textColor} fontSize="xs">Línea:</Text>
-                          <IndicatorValue 
-                            value={signal.technicalAnalysis.indicators.macd.macdLine} 
-                            type={signal.technicalAnalysis.indicators.macd.macdLine > 0 ? 'positive' : 'negative'} 
-                          />
-                        </HStack>
-                        <HStack>
-                          <Text color={textColor} fontSize="xs">Señal:</Text>
-                          <IndicatorValue 
-                            value={signal.technicalAnalysis.indicators.macd.signalLine} 
-                            type={signal.technicalAnalysis.indicators.macd.signalLine > 0 ? 'positive' : 'negative'} 
-                          />
-                        </HStack>
-                        <HStack>
-                          <Text color={textColor} fontSize="xs">Histograma:</Text>
-                          <IndicatorValue 
-                            value={signal.technicalAnalysis.indicators.macd.histogram} 
-                            type={signal.technicalAnalysis.indicators.macd.histogram > 0 ? 'positive' : 'negative'} 
-                          />
-                        </HStack>
-                      </VStack>
-                    </Box>
-                  </VStack>
-                </GridItem>
-              </Grid>
+                      <HStack justify="space-between" width="100%">
+                        <Text color={textColor} fontSize="xs">EMA21:</Text>
+                        <IndicatorValue 
+                          value={signal.technicalAnalysis.indicators.ema.ema21} 
+                          type={signal.technicalAnalysis.indicators.ema.ema21 > signal.price ? 'negative' : 'positive'} 
+                        />
+                      </HStack>
+                      <HStack justify="space-between" width="100%">
+                        <Text color={textColor} fontSize="xs">EMA50:</Text>
+                        <IndicatorValue 
+                          value={signal.technicalAnalysis.indicators.ema.ema50} 
+                          type={signal.technicalAnalysis.indicators.ema.ema50 > signal.price ? 'negative' : 'positive'} 
+                        />
+                      </HStack>
+                    </VStack>
+                  </Box>
+                </VStack>
+              </SimpleGrid>
             </AccordionPanel>
           </AccordionItem>
         </Accordion>
@@ -279,6 +241,7 @@ export const TradingSignals = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const bgColor = useColorModeValue('gray.800', 'gray.900');
+  const isMobile = useBreakpointValue({ base: true, md: false });
 
   useEffect(() => {
     const fetchSignals = async () => {

@@ -1,5 +1,17 @@
 import React, { useState, useEffect } from 'react'
-import { Box, Flex, Text, useColorModeValue, HStack, Select, Spinner, Alert, AlertIcon } from '@chakra-ui/react'
+import { 
+  Box, 
+  Flex, 
+  Text, 
+  useColorModeValue, 
+  HStack, 
+  Select, 
+  Spinner, 
+  Alert, 
+  AlertIcon,
+  useBreakpointValue,
+  VStack
+} from '@chakra-ui/react'
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import { getCoinPriceHistory, getCoinData, type CoinData } from '../services/api'
 
@@ -16,6 +28,7 @@ export const CryptoChart = () => {
   const [error, setError] = useState<string | null>(null)
   const bgColor = useColorModeValue('white', 'gray.800')
   const textColor = useColorModeValue('gray.600', 'gray.200')
+  const isMobile = useBreakpointValue({ base: true, md: false })
 
   useEffect(() => {
     let isMounted = true;
@@ -91,15 +104,20 @@ export const CryptoChart = () => {
           <XAxis 
             dataKey="time"
             tickFormatter={(value) => value}
-            interval="preserveStartEnd"
+            interval={isMobile ? 2 : 1}
+            tick={{ fontSize: isMobile ? 10 : 12 }}
+            height={isMobile ? 30 : 40}
           />
           <YAxis 
             domain={['auto', 'auto']}
             tickFormatter={(value) => `$${value.toLocaleString()}`}
+            tick={{ fontSize: isMobile ? 10 : 12 }}
+            width={isMobile ? 60 : 80}
           />
           <Tooltip
             formatter={(value: number) => [`$${value.toLocaleString()}`, 'Precio']}
             labelFormatter={(label) => `Tiempo: ${label}`}
+            contentStyle={{ fontSize: isMobile ? '12px' : '14px' }}
           />
           <Area
             type="monotone"
@@ -116,7 +134,7 @@ export const CryptoChart = () => {
 
   if (error) {
     return (
-      <Box bg={bgColor} p={6} borderRadius="lg" boxShadow="sm" mb={6}>
+      <Box bg={bgColor} p={isMobile ? 3 : 6} borderRadius="lg" boxShadow="sm" mb={6}>
         <Alert status="error">
           <AlertIcon />
           {error}
@@ -127,7 +145,7 @@ export const CryptoChart = () => {
 
   if (loading || !coinInfo) {
     return (
-      <Box bg={bgColor} p={6} borderRadius="lg" boxShadow="sm" mb={6} height="400px">
+      <Box bg={bgColor} p={isMobile ? 3 : 6} borderRadius="lg" boxShadow="sm" mb={6} height={isMobile ? "300px" : "400px"}>
         <Flex justify="center" align="center" height="100%">
           <Spinner size="xl" />
         </Flex>
@@ -136,28 +154,47 @@ export const CryptoChart = () => {
   }
 
   return (
-    <Box bg={bgColor} p={6} borderRadius="lg" boxShadow="sm" mb={6}>
-      <Flex justify="space-between" align="center" mb={6}>
-        <Box>
-          <Flex align="center" gap={4}>
-            <Text fontSize="2xl" fontWeight="bold">Bitcoin (BTC)</Text>
+    <Box bg={bgColor} p={isMobile ? 3 : 6} borderRadius="lg" boxShadow="sm" mb={6}>
+      <Flex 
+        direction={isMobile ? "column" : "row"} 
+        justify="space-between" 
+        align={isMobile ? "stretch" : "center"} 
+        mb={6}
+        gap={isMobile ? 4 : 0}
+      >
+        <VStack align={isMobile ? "stretch" : "flex-start"} spacing={2}>
+          <Flex 
+            align="center" 
+            gap={4} 
+            wrap={isMobile ? "wrap" : "nowrap"}
+            justify={isMobile ? "space-between" : "flex-start"}
+          >
+            <Text fontSize={isMobile ? "xl" : "2xl"} fontWeight="bold">Bitcoin (BTC)</Text>
             <Text color={coinInfo.priceChangePercent >= 0 ? "green.500" : "red.500"}>
               {coinInfo.priceChangePercent.toFixed(2)}%
             </Text>
           </Flex>
-          <Text fontSize="3xl" fontWeight="bold">${coinInfo.price.toLocaleString()}</Text>
-          <Text color={textColor}>Última actualización: {new Date().toLocaleString()}</Text>
-        </Box>
-        <HStack spacing={4}>
-          <Select value={timeframe} onChange={(e) => setTimeframe(e.target.value)}>
+          <Text fontSize={isMobile ? "2xl" : "3xl"} fontWeight="bold">
+            ${coinInfo.price.toLocaleString()}
+          </Text>
+          <Text color={textColor} fontSize={isMobile ? "sm" : "md"}>
+            Última actualización: {new Date().toLocaleString()}
+          </Text>
+        </VStack>
+        <Box width={isMobile ? "100%" : "auto"}>
+          <Select 
+            value={timeframe} 
+            onChange={(e) => setTimeframe(e.target.value)}
+            size={isMobile ? "sm" : "md"}
+          >
             <option value="DAY">24 horas</option>
             <option value="WEEK">7 días</option>
             <option value="MONTH">30 días</option>
           </Select>
-        </HStack>
+        </Box>
       </Flex>
 
-      <Box h="300px">
+      <Box h={isMobile ? "250px" : "300px"}>
         {renderChart()}
       </Box>
     </Box>

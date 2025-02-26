@@ -8,11 +8,11 @@ import {
   extendTheme,
   ThemeConfig,
   withDefaultColorScheme,
-  type ThemeComponents
+  type ThemeComponents,
+  VStack
 } from '@chakra-ui/react'
 import { Header } from './components/Header'
 import { CryptoChart } from './components/CryptoChart'
-import { TradingReport } from './components/TradingReport'
 import { TransactionsOverview } from './components/TransactionsOverview'
 import { TradingSignals } from './components/TradingSignals'
 
@@ -263,23 +263,11 @@ function App() {
       >
         <Header />
         <Container maxW="container.xl" py={8}>
-          <Grid
-            templateColumns="repeat(12, 1fr)"
-            gap={8}
-          >
-            <GridItem colSpan={8}>
-              <CryptoChart />
-              <Box mt={8}>
-                <TradingSignals />
-              </Box>
-              <Box mt={8}>
-                <TransactionsOverview />
-              </Box>
-            </GridItem>
-            <GridItem colSpan={4}>
-              <TradingReport />
-            </GridItem>
-          </Grid>
+          <VStack spacing={8} align="stretch">
+            <CryptoChart />
+            <TradingSignals />
+            <TransactionsOverview />
+          </VStack>
         </Container>
       </Box>
     </ChakraProvider>
