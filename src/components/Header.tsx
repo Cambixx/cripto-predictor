@@ -1,4 +1,5 @@
 import React from 'react'
+import { Link as RouterLink, useLocation } from 'react-router-dom'
 import {
   Box,
   Flex,
@@ -15,7 +16,8 @@ import {
   DrawerOverlay,
   DrawerContent,
   DrawerCloseButton,
-  useBreakpointValue
+  useBreakpointValue,
+  Link
 } from '@chakra-ui/react'
 import { SearchIcon, BellIcon, HamburgerIcon } from '@chakra-ui/icons'
 
@@ -23,14 +25,36 @@ export const Header = () => {
   const bgColor = useColorModeValue('white', 'gray.800')
   const { isOpen, onOpen, onClose } = useDisclosure()
   const isMobile = useBreakpointValue({ base: true, md: false })
+  const location = useLocation()
+
+  const menuItems = [
+    { path: '/', label: 'Dashboard' },
+    { path: '/market', label: 'Market' },
+    { path: '/portfolio', label: 'Portfolio' },
+    { path: '/analytics', label: 'Analytics' },
+    { path: '/reports', label: 'Reports' }
+  ]
 
   const MenuItems = () => (
     <>
-      <Button variant="ghost">Dashboard</Button>
-      <Button variant="ghost">Market</Button>
-      <Button variant="ghost">Portfolio</Button>
-      <Button variant="ghost">Analytics</Button>
-      <Button variant="ghost">Reports</Button>
+      {menuItems.map((item) => (
+        <Link 
+          key={item.path} 
+          as={RouterLink} 
+          to={item.path}
+        >
+          <Button 
+            variant="ghost"
+            isActive={location.pathname === item.path}
+            _active={{
+              bg: 'brand.primary',
+              color: 'white'
+            }}
+          >
+            {item.label}
+          </Button>
+        </Link>
+      ))}
     </>
   )
 
@@ -38,9 +62,11 @@ export const Header = () => {
     <Box bg={bgColor} px={4} borderBottom="1px" borderColor={useColorModeValue('gray.200', 'gray.700')}>
       <Flex h={16} alignItems="center" justifyContent="space-between">
         <Flex alignItems="center">
-          <Image h="32px" src="/chainx-logo.png" alt="ChainX" />
+          <Link as={RouterLink} to="/">
+            <Image h="32px" src="/chainx-logo.png" alt="ChainX" />
+          </Link>
           {!isMobile && (
-            <HStack spacing={8} ml={8}>
+            <HStack spacing={2} ml={8}>
               <MenuItems />
             </HStack>
           )}

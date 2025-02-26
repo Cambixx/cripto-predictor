@@ -1,4 +1,5 @@
 import React from 'react'
+import { BrowserRouter as Router, Routes, Route } from 'react-router-dom'
 import { 
   ChakraProvider, 
   Box, 
@@ -15,6 +16,11 @@ import { Header } from './components/Header'
 import { CryptoChart } from './components/CryptoChart'
 import { TransactionsOverview } from './components/TransactionsOverview'
 import { TradingSignals } from './components/TradingSignals'
+import { DashboardPage } from './pages/dashboard/DashboardPage'
+import { MarketPage } from './pages/market/MarketPage'
+import { PortfolioPage } from './pages/portfolio/PortfolioPage'
+import { AnalyticsPage } from './pages/analytics/AnalyticsPage'
+import { ReportsPage } from './pages/reports/ReportsPage'
 
 // Configuración del tema
 const config: ThemeConfig = {
@@ -254,22 +260,26 @@ const theme = extendTheme(
 function App() {
   return (
     <ChakraProvider theme={theme}>
-      <Box 
-        minH="100vh" 
-        bgGradient="linear(to-b, dark.100, dark.200)"
-        backgroundImage="radial-gradient(circle at 10% 20%, rgba(37, 99, 235, 0.1) 0%, transparent 20%),
-                        radial-gradient(circle at 90% 50%, rgba(37, 99, 235, 0.08) 0%, transparent 20%),
-                        radial-gradient(circle at 30% 80%, rgba(37, 99, 235, 0.05) 0%, transparent 20%)"
-      >
-        <Header />
-        <Container maxW="container.xl" py={8}>
-          <VStack spacing={8} align="stretch">
-            <CryptoChart />
-            <TradingSignals />
-            <TransactionsOverview />
-          </VStack>
-        </Container>
-      </Box>
+      <Router>
+        <Box 
+          minH="100vh" 
+          bgGradient="linear(to-b, dark.100, dark.200)"
+          backgroundImage="radial-gradient(circle at 10% 20%, rgba(37, 99, 235, 0.1) 0%, transparent 20%),
+                          radial-gradient(circle at 90% 50%, rgba(37, 99, 235, 0.08) 0%, transparent 20%),
+                          radial-gradient(circle at 30% 80%, rgba(37, 99, 235, 0.05) 0%, transparent 20%)"
+        >
+          <Header />
+          <Container maxW="container.xl" py={8}>
+            <Routes>
+              <Route path="/" element={<DashboardPage />} />
+              <Route path="/market" element={<MarketPage />} />
+              <Route path="/portfolio" element={<PortfolioPage />} />
+              <Route path="/analytics" element={<AnalyticsPage />} />
+              <Route path="/reports" element={<ReportsPage />} />
+            </Routes>
+          </Container>
+        </Box>
+      </Router>
     </ChakraProvider>
   )
 }
