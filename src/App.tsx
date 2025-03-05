@@ -21,6 +21,7 @@ import { MarketPage } from './pages/market/MarketPage'
 import { PortfolioPage } from './pages/portfolio/PortfolioPage'
 import { AnalyticsPage } from './pages/analytics/AnalyticsPage'
 import { ReportsPage } from './pages/reports/ReportsPage'
+import { AlertsPage } from './pages/alerts/AlertsPage'
 
 // Configuración del tema
 const config: ThemeConfig = {
@@ -276,6 +277,7 @@ function App() {
               <Route path="/portfolio" element={<PortfolioPage />} />
               <Route path="/analytics" element={<AnalyticsPage />} />
               <Route path="/reports" element={<ReportsPage />} />
+              <Route path="/alerts" element={<AlertsPage />} />
             </Routes>
           </Container>
         </Box>

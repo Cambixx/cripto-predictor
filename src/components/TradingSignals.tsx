@@ -37,15 +37,20 @@ import {
   useBreakpointValue,
   SimpleGrid,
 } from '@chakra-ui/react';
-import { generateTradingSignals, type TradingSignal, type TopSignals } from '../services/tradingSignals';
+import { generateTradingSignals, type TradingSignal, type TopSignals, generateDashboardSignals, type DashboardSignal, SignalType } from '../services/tradingSignals';
 
-const SignalBadge: React.FC<{ signal: 'buy' | 'sell' | 'neutral' }> = ({ signal }) => {
+const SignalBadge: React.FC<{ signal: 'buy' | 'sell' | 'neutral' | SignalType }> = ({ signal }) => {
   const getSignalColor = () => {
     switch (signal) {
       case 'buy':
+      case SignalType.BUY:
+      case SignalType.STRONG_BUY:
         return 'green';
       case 'sell':
+      case SignalType.SELL:
+      case SignalType.STRONG_SELL:
         return 'red';
+      case SignalType.HOLD:
       default:
         return 'gray';
     }
@@ -54,23 +59,30 @@ const SignalBadge: React.FC<{ signal: 'buy' | 'sell' | 'neutral' }> = ({ signal 
   const getSignalText = () => {
     switch (signal) {
       case 'buy':
+      case SignalType.BUY:
         return 'COMPRAR';
+      case SignalType.STRONG_BUY:
+        return 'COMPRAR FUERTE';
       case 'sell':
+      case SignalType.SELL:
         return 'VENDER';
+      case SignalType.STRONG_SELL:
+        return 'VENDER FUERTE';
+      case SignalType.HOLD:
       default:
-        return 'NEUTRAL';
+        return 'MANTENER';
     }
   };
 
   return (
-    <Badge 
-      colorScheme={getSignalColor()} 
-      fontSize="lg" 
-      padding={2}
+    <Badge
+      colorScheme={getSignalColor()}
+      variant="solid"
+      px={3}
+      py={1}
       borderRadius="md"
-      boxShadow="md"
-      textTransform="uppercase"
-      letterSpacing="wider"
+      fontSize="xs"
+      fontWeight="bold"
     >
       {getSignalText()}
     </Badge>
@@ -94,6 +106,18 @@ const SignalCard: React.FC<{ signal: TradingSignal }> = ({ signal }) => {
   
   const isMobile = useBreakpointValue({ base: true, md: false });
 
+  // Asegurarnos de que todos los objetos y propiedades existen
+  const indicators = signal?.technicalAnalysis?.indicators || {};
+  const stochastic = indicators.stochastic || { k: 0, d: 0 };
+  
+  // Definir valores por defecto para los EMAs
+  const ema50 = indicators.ema?.ema50 || 0;
+  const ema200 = indicators.ema?.ema200 || 0;
+  
+  // Para EMAs personalizados que no están en la interfaz, usar valores predeterminados
+  const ema9 = 0;
+  const ema21 = 0;
+  
   return (
     <Box 
       p={isMobile ? 4 : 6} 
@@ -117,16 +141,14 @@ const SignalCard: React.FC<{ signal: TradingSignal }> = ({ signal }) => {
                   <StatNumber fontSize={isMobile ? "lg" : "xl"} color="white">
                     ${signal.price.toLocaleString()}
                   </StatNumber>
-                  <StatHelpText color={signal.priceChange24h >= 0 ? "green.400" : "red.400"}>
-                    <StatArrow type={signal.priceChange24h >= 0 ? 'increase' : 'decrease'} />
+                  <StatHelpText>
+                    <StatArrow type={signal.priceChange24h >= 0 ? "increase" : "decrease"} />
                     {Math.abs(signal.priceChange24h).toFixed(2)}%
                   </StatHelpText>
                 </Stat>
               </StatGroup>
             </VStack>
-            <Box mt={isMobile ? 2 : 0}>
-              <SignalBadge signal={signal.signal} />
-            </Box>
+            <SignalBadge signal={signal.signal} />
           </HStack>
         </VStack>
 
@@ -180,21 +202,21 @@ const SignalCard: React.FC<{ signal: TradingSignal }> = ({ signal }) => {
                   <Box width="100%">
                     <Text color={textColor} fontSize="sm">RSI</Text>
                     <IndicatorValue 
-                      value={signal.technicalAnalysis.indicators.rsi} 
-                      type={signal.technicalAnalysis.indicators.rsi > 70 ? 'negative' : signal.technicalAnalysis.indicators.rsi < 30 ? 'positive' : 'neutral'} 
+                      value={indicators.rsi} 
+                      type={indicators.rsi > 70 ? 'negative' : indicators.rsi < 30 ? 'positive' : 'neutral'} 
                     />
                   </Box>
                   <Box width="100%">
                     <Text color={textColor} fontSize="sm">Stochastic K/D</Text>
                     <HStack>
                       <IndicatorValue 
-                        value={signal.technicalAnalysis.indicators.stochastic.k} 
-                        type={signal.technicalAnalysis.indicators.stochastic.k > 80 ? 'negative' : signal.technicalAnalysis.indicators.stochastic.k < 20 ? 'positive' : 'neutral'} 
+                        value={stochastic.k} 
+                        type={stochastic.k > 80 ? 'negative' : stochastic.k < 20 ? 'positive' : 'neutral'} 
                       />
                       <Text color={textColor}>/</Text>
                       <IndicatorValue 
-                        value={signal.technicalAnalysis.indicators.stochastic.d} 
-                        type={signal.technicalAnalysis.indicators.stochastic.d > 80 ? 'negative' : signal.technicalAnalysis.indicators.stochastic.d < 20 ? 'positive' : 'neutral'} 
+                        value={stochastic.d} 
+                        type={stochastic.d > 80 ? 'negative' : stochastic.d < 20 ? 'positive' : 'neutral'} 
                       />
                     </HStack>
                   </Box>
@@ -206,22 +228,29 @@ const SignalCard: React.FC<{ signal: TradingSignal }> = ({ signal }) => {
                       <HStack justify="space-between" width="100%">
                         <Text color={textColor} fontSize="xs">EMA9:</Text>
                         <IndicatorValue 
-                          value={signal.technicalAnalysis.indicators.ema.ema9} 
-                          type={signal.technicalAnalysis.indicators.ema.ema9 > signal.price ? 'negative' : 'positive'} 
+                          value={ema9} 
+                          type={ema9 > signal.price ? 'negative' : 'positive'} 
                         />
                       </HStack>
                       <HStack justify="space-between" width="100%">
                         <Text color={textColor} fontSize="xs">EMA21:</Text>
                         <IndicatorValue 
-                          value={signal.technicalAnalysis.indicators.ema.ema21} 
-                          type={signal.technicalAnalysis.indicators.ema.ema21 > signal.price ? 'negative' : 'positive'} 
+                          value={ema21} 
+                          type={ema21 > signal.price ? 'negative' : 'positive'} 
                         />
                       </HStack>
                       <HStack justify="space-between" width="100%">
                         <Text color={textColor} fontSize="xs">EMA50:</Text>
                         <IndicatorValue 
-                          value={signal.technicalAnalysis.indicators.ema.ema50} 
-                          type={signal.technicalAnalysis.indicators.ema.ema50 > signal.price ? 'negative' : 'positive'} 
+                          value={ema50} 
+                          type={ema50 > signal.price ? 'negative' : 'positive'} 
+                        />
+                      </HStack>
+                      <HStack justify="space-between" width="100%">
+                        <Text color={textColor} fontSize="xs">EMA200:</Text>
+                        <IndicatorValue 
+                          value={ema200} 
+                          type={ema200 > signal.price ? 'negative' : 'positive'} 
                         />
                       </HStack>
                     </VStack>
@@ -249,6 +278,14 @@ export const TradingSignals = () => {
         setLoading(true);
         setError(null);
         const newSignals = await generateTradingSignals('DAY');
+        
+        // Verificar que newSignals tiene la estructura esperada
+        if (!newSignals || !newSignals.buySignals || !newSignals.sellSignals) {
+          console.error('Estructura de señales incorrecta:', newSignals);
+          setError('Formato de datos incorrecto en las señales de trading');
+          return;
+        }
+        
         setSignals(newSignals);
       } catch (error) {
         console.error('Error fetching signals:', error);
@@ -272,15 +309,24 @@ export const TradingSignals = () => {
     );
   }
 
-  if (loading || !signals) {
+  if (loading) {
     return (
-      <Box p={6} bg={bgColor} borderRadius="xl" boxShadow="xl">
-        <VStack spacing={4} align="stretch">
-          <Text fontSize="xl" fontWeight="bold" color="white">
-            Analizando mercado...
-          </Text>
-          <Spinner size="xl" alignSelf="center" color="blue.400" thickness="4px" />
-        </VStack>
+      <Box textAlign="center" py={10}>
+        <Spinner size="xl" color="blue.500" />
+        <Text mt={4} color="gray.400">Cargando señales de trading...</Text>
+      </Box>
+    );
+  }
+
+  if (!signals || (!signals.buySignals.length && !signals.sellSignals.length)) {
+    return (
+      <Box 
+        p={6} 
+        bg={bgColor} 
+        borderRadius="xl" 
+        textAlign="center"
+      >
+        <Text color="gray.400">No se encontraron señales de trading activas.</Text>
       </Box>
     );
   }
@@ -306,8 +352,8 @@ export const TradingSignals = () => {
             <TabPanel px={0}>
               <VStack spacing={4} align="stretch">
                 {signals.buySignals.length > 0 ? (
-                  signals.buySignals.map((signal) => (
-                    <SignalCard key={signal.symbol} signal={signal} />
+                  signals.buySignals.map((signal, index) => (
+                    <SignalCard key={`buy-${signal.symbol}-${index}`} signal={signal} />
                   ))
                 ) : (
                   <Alert status="info" variant="solid">
@@ -320,8 +366,8 @@ export const TradingSignals = () => {
             <TabPanel px={0}>
               <VStack spacing={4} align="stretch">
                 {signals.sellSignals.length > 0 ? (
-                  signals.sellSignals.map((signal) => (
-                    <SignalCard key={signal.symbol} signal={signal} />
+                  signals.sellSignals.map((signal, index) => (
+                    <SignalCard key={`sell-${signal.symbol}-${index}`} signal={signal} />
                   ))
                 ) : (
                   <Alert status="info" variant="solid">

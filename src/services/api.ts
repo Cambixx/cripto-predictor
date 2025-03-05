@@ -27,146 +27,225 @@ api.interceptors.response.use(
 );
 
 // Cache para los pares de trading activos
-let activeTradingPairs: string[] = [];
-let lastPairsUpdate = 0;
-const PAIRS_CACHE_DURATION = 5 * 60 * 1000; // 5 minutos
-
-export const getActiveTradingPairs = async (): Promise<string[]> => {
-  const now = Date.now();
-  
-  // Usar caché si está disponible y no ha expirado
-  if (activeTradingPairs.length > 0 && (now - lastPairsUpdate) < PAIRS_CACHE_DURATION) {
-    return activeTradingPairs;
-  }
-
-  try {
-    // Obtener todos los pares de trading con USDT
-    const [exchangeInfo, tickers] = await Promise.all([
-      api.get('/exchangeInfo'),
-      api.get('/ticker/24hr')
-    ]);
-
-    // Filtrar símbolos que terminan en USDT y están activos para trading
-    const validSymbols = new Set(
-      exchangeInfo.data.symbols
-        .filter((symbol: any) => 
-          symbol.symbol.endsWith('USDT') && 
-          symbol.status === 'TRADING' &&
-          symbol.isSpotTradingAllowed
-        )
-        .map((symbol: any) => symbol.symbol)
-    );
-
-    // Filtrar y ordenar por volumen en USD
-    const volumeData = tickers.data
-      .filter((ticker: any) => 
-        validSymbols.has(ticker.symbol) &&
-        parseFloat(ticker.quoteVolume) >= API_CONFIG.BINANCE.MIN_VOLUME_USD
-      )
-      .sort((a: any, b: any) => 
-        parseFloat(b.quoteVolume) - parseFloat(a.quoteVolume)
-      )
-      .slice(0, API_CONFIG.BINANCE.MAX_PAIRS)
-      .map((ticker: any) => ticker.symbol.replace('USDT', ''));
-
-    // Actualizar caché
-    activeTradingPairs = volumeData;
-    lastPairsUpdate = now;
-
-    return activeTradingPairs;
-  } catch (error) {
-    console.error('Error obteniendo pares de trading activos:', error);
-    // Si hay error, devolver la caché aunque haya expirado
-    return activeTradingPairs;
-  }
-};
+let activePairsCache: string[] | null = null;
+let lastActivePairsUpdate = 0;
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutos
 
 export interface CoinData {
   symbol: string;
+  name: string;
   price: number;
-  priceChange: number;
   priceChangePercent: number;
-  volume: number;
-  quoteVolume: number;
+  volume24h: number;
+  marketCap: number;
+  supply: {
+    circulating: number;
+    max?: number;
+  };
+  change24h: number;
+  high24h: number;
+  low24h: number;
 }
 
-export const getCoinData = async (symbol: string): Promise<CoinData> => {
-  try {
-    const pair = `${symbol}USDT`;
-    const response = await api.get('/ticker/24hr', {
-      params: {
-        symbol: pair,
-      },
-    });
+export interface PriceHistoryPoint {
+  time: number;
+  price: number;
+  volume?: number;
+}
 
+export interface PriceHistory {
+  symbol: string;
+  timeframe: string;
+  prices: PriceHistoryPoint[];
+}
+
+// Obtener datos de un activo usando la API real de Binance
+export const getCoinData = async (symbol: string): Promise<CoinData> => {
+  // Convertir 'BTC' a 'BTCUSDT' para la API de Binance
+  const pair = symbol.includes('/') 
+    ? symbol.replace('/', '') 
+    : `${symbol}${API_CONFIG.BINANCE.DEFAULT_CURRENCY}`;
+  
+  try {
+    // Obtener datos del ticker de 24h
+    const response = await api.get(API_CONFIG.BINANCE.ENDPOINTS.TICKER_24H, {
+      params: {
+        symbol: pair
+      }
+    });
+    
+    const data = response.data;
+    
+    // Obtener información adicional sobre el activo si está disponible
+    let supply = {
+      circulating: 0,
+      max: undefined
+    };
+    
+    try {
+      // Esta parte es opcional ya que Binance no proporciona información de supply
+      // En una aplicación real, podríamos obtener esta info de otra API como CoinGecko
+      const coinName = symbol.split('/')[0];
+    } catch (error) {
+      console.warn(`No se pudo obtener información de supply para ${symbol}`);
+    }
+    
     return {
-      symbol: response.data.symbol,
-      price: parseFloat(response.data.lastPrice),
-      priceChange: parseFloat(response.data.priceChange),
-      priceChangePercent: parseFloat(response.data.priceChangePercent),
-      volume: parseFloat(response.data.volume),
-      quoteVolume: parseFloat(response.data.quoteVolume),
+      symbol: symbol.includes('/') ? symbol : `${symbol}/${API_CONFIG.BINANCE.DEFAULT_CURRENCY}`,
+      name: getCoinName(symbol.split('/')[0] || symbol),
+      price: parseFloat(data.lastPrice),
+      priceChangePercent: parseFloat(data.priceChangePercent),
+      volume24h: parseFloat(data.volume),
+      marketCap: 0, // Binance no proporciona esta información directamente
+      supply,
+      change24h: parseFloat(data.priceChangePercent),
+      high24h: parseFloat(data.highPrice),
+      low24h: parseFloat(data.lowPrice),
     };
   } catch (error) {
-    console.error('Error fetching coin data:', error);
-    throw new Error('No se pudo obtener la información de la moneda');
+    console.error(`Error al obtener datos para ${symbol}:`, error);
+    throw new Error(`No se pudieron obtener datos para ${symbol}`);
   }
 };
 
+// Obtener historial de precios de un activo usando la API real de Binance
+export const getCoinPriceHistory = async (
+  symbol: string,
+  timeframe: string
+): Promise<PriceHistory> => {
+  // Convertir 'BTC' a 'BTCUSDT' para la API de Binance
+  const pair = symbol.includes('/') 
+    ? symbol.replace('/', '') 
+    : `${symbol}${API_CONFIG.BINANCE.DEFAULT_CURRENCY}`;
+  
+  let interval, limit;
+  
+  // Mapear el timeframe a la configuración de Binance
+  switch(timeframe) {
+    case 'DAY':
+      interval = API_CONFIG.BINANCE.TIMEFRAMES.DAY.interval;
+      limit = API_CONFIG.BINANCE.TIMEFRAMES.DAY.limit;
+      break;
+    case 'WEEK':
+      interval = API_CONFIG.BINANCE.TIMEFRAMES.WEEK.interval;
+      limit = API_CONFIG.BINANCE.TIMEFRAMES.WEEK.limit;
+      break;
+    case 'MONTH':
+      interval = API_CONFIG.BINANCE.TIMEFRAMES.MONTH.interval;
+      limit = API_CONFIG.BINANCE.TIMEFRAMES.MONTH.limit;
+      break;
+    default:
+      interval = '1h';
+      limit = 24;
+  }
+  
+  try {
+    // Obtener datos de klines (velas)
+    const response = await api.get(API_CONFIG.BINANCE.ENDPOINTS.KLINES, {
+      params: {
+        symbol: pair,
+        interval: interval,
+        limit: limit
+      }
+    });
+    
+    // Transformar datos a nuestro formato
+    const prices: PriceHistoryPoint[] = response.data.map((candle: any) => {
+      return {
+        time: candle[0], // timestamp de apertura
+        price: parseFloat(candle[4]), // precio de cierre
+        volume: parseFloat(candle[5]) // volumen
+      };
+    });
+    
+    return {
+      symbol: symbol.includes('/') ? symbol : `${symbol}/${API_CONFIG.BINANCE.DEFAULT_CURRENCY}`,
+      timeframe,
+      prices
+    };
+  } catch (error) {
+    console.error(`Error al obtener historial de precios para ${symbol}:`, error);
+    throw new Error(`No se pudo obtener el historial de precios para ${symbol}`);
+  }
+};
+
+// Obtener los pares de trading activos desde Binance
+export const getActiveTradingPairs = async (): Promise<string[]> => {
+  // Usar caché si está disponible y no ha expirado
+  if (activePairsCache && Date.now() - lastActivePairsUpdate < CACHE_TTL) {
+    return activePairsCache;
+  }
+  
+  try {
+    // Obtener información de todos los pares disponibles
+    const response = await api.get(API_CONFIG.BINANCE.ENDPOINTS.EXCHANGE_INFO);
+    
+    // Filtrar por pares USDT con volumen significativo
+    const allPairs = response.data.symbols
+      .filter((symbol: any) => 
+        symbol.status === 'TRADING' && 
+        symbol.quoteAsset === API_CONFIG.BINANCE.DEFAULT_CURRENCY
+      )
+      .map((symbol: any) => `${symbol.baseAsset}/${symbol.quoteAsset}`);
+    
+    // Actualizar caché
+    activePairsCache = allPairs;
+    lastActivePairsUpdate = Date.now();
+    
+    return allPairs;
+  } catch (error) {
+    console.error('Error al obtener pares de trading activos:', error);
+    
+    if (activePairsCache) {
+      console.warn('Usando datos en caché debido al error');
+      return activePairsCache;
+    }
+    
+    // Si no hay caché, lanzamos el error
+    throw new Error('No se pudieron obtener los pares de trading activos');
+  }
+};
+
+// Obtener datos del mercado para mostrar en la página principal
 export const getMarketData = async (limit: number = 5): Promise<CoinData[]> => {
   try {
+    // Obtener los pares de trading activos
     const activePairs = await getActiveTradingPairs();
-    const selectedPairs = activePairs.slice(0, limit);
     
-    const responses = await Promise.all(
-      selectedPairs.map(symbol => 
-        api.get('/ticker/24hr', {
-          params: { symbol: `${symbol}USDT` },
-        })
-      )
+    // Filtrar solo los top N pares
+    const topPairs = activePairs.slice(0, limit);
+    
+    // Obtener datos completos para cada par
+    const marketData = await Promise.all(
+      topPairs.map(symbol => getCoinData(symbol))
     );
-
-    return responses.map(response => ({
-      symbol: response.data.symbol,
-      price: parseFloat(response.data.lastPrice),
-      priceChange: parseFloat(response.data.priceChange),
-      priceChangePercent: parseFloat(response.data.priceChangePercent),
-      volume: parseFloat(response.data.volume),
-      quoteVolume: parseFloat(response.data.quoteVolume),
-    }));
+    
+    return marketData;
   } catch (error) {
-    console.error('Error fetching market data:', error);
+    console.error('Error al obtener datos del mercado:', error);
     throw new Error('No se pudieron obtener los datos del mercado');
   }
 };
 
-export const getCoinPriceHistory = async (
-  symbol: string,
-  timeframe: string,
-): Promise<{prices: Array<{time: number, price: number}>}> => {
-  try {
-    const pair = `${symbol}USDT`;
-    const timeframeConfig = API_CONFIG.BINANCE.TIMEFRAMES[timeframe as keyof typeof API_CONFIG.BINANCE.TIMEFRAMES];
-    if (!timeframeConfig) {
-      throw new Error(`Timeframe no soportado: ${timeframe}`);
-    }
-
-    const response = await api.get('/klines', {
-      params: {
-        symbol: pair,
-        interval: timeframeConfig.interval,
-        limit: timeframeConfig.limit,
-      },
-    });
-
-    const prices = response.data.map((kline: any[]) => ({
-      time: kline[0], // Tiempo de apertura
-      price: parseFloat(kline[4]), // Precio de cierre
-    }));
-
-    return { prices };
-  } catch (error) {
-    console.error('Error fetching price history:', error);
-    throw new Error('No se pudo obtener el historial de precios');
-  }
-}; 
+// Función auxiliar para obtener el nombre completo de una criptomoneda
+function getCoinName(symbol: string): string {
+  const coinNames: Record<string, string> = {
+    'BTC': 'Bitcoin',
+    'ETH': 'Ethereum',
+    'SOL': 'Solana',
+    'ADA': 'Cardano',
+    'DOT': 'Polkadot',
+    'AVAX': 'Avalanche',
+    'MATIC': 'Polygon',
+    'LINK': 'Chainlink',
+    'XRP': 'Ripple',
+    'ATOM': 'Cosmos',
+    'DOGE': 'Dogecoin',
+    'LTC': 'Litecoin',
+    'NEAR': 'NEAR Protocol',
+    'UNI': 'Uniswap',
+    'USDT': 'Tether',
+  };
+  
+  return coinNames[symbol] || symbol;
+} 

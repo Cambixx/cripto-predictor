@@ -1,4 +1,4 @@
-import { generateSignalForSymbol } from './tradingSignals';
+import { generateDashboardSignals, DashboardSignal, SignalType } from './tradingSignals';
 
 export interface SignalAnalysis {
   symbol: string;

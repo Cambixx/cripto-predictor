@@ -20,7 +20,11 @@ const formatDate = (timestamp: number): string => {
   return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 };
 
-export const CryptoChart = () => {
+interface CryptoChartProps {
+  symbol?: string;
+}
+
+export const CryptoChart: React.FC<CryptoChartProps> = ({ symbol = 'BTC/USDT' }) => {
   const [timeframe, setTimeframe] = useState('DAY')
   const [priceData, setPriceData] = useState<{time: string, price: number}[]>([])
   const [coinInfo, setCoinInfo] = useState<CoinData | null>(null)
@@ -29,6 +33,9 @@ export const CryptoChart = () => {
   const bgColor = useColorModeValue('white', 'gray.800')
   const textColor = useColorModeValue('gray.600', 'gray.200')
   const isMobile = useBreakpointValue({ base: true, md: false })
+
+  // Extraer el símbolo base (por ejemplo, 'BTC' de 'BTC/USDT')
+  const baseCoin = symbol.split('/')[0];
 
   useEffect(() => {
     let isMounted = true;
@@ -39,12 +46,12 @@ export const CryptoChart = () => {
         setError(null)
 
         // Primero intentamos obtener la información de la moneda
-        const coin = await getCoinData('BTC')
+        const coin = await getCoinData(baseCoin)
         if (!isMounted) return;
         setCoinInfo(coin)
 
         // Luego obtenemos el historial de precios
-        const priceHistory = await getCoinPriceHistory('BTC', timeframe)
+        const priceHistory = await getCoinPriceHistory(baseCoin, timeframe)
         if (!isMounted) return;
 
         if (!priceHistory.prices || priceHistory.prices.length === 0) {
@@ -79,7 +86,7 @@ export const CryptoChart = () => {
       isMounted = false
       clearInterval(interval)
     }
-  }, [timeframe])
+  }, [timeframe, baseCoin]) // Añadir baseCoin como dependencia
 
   const renderChart = () => {
     if (priceData.length === 0) {
@@ -169,7 +176,7 @@ export const CryptoChart = () => {
             wrap={isMobile ? "wrap" : "nowrap"}
             justify={isMobile ? "space-between" : "flex-start"}
           >
-            <Text fontSize={isMobile ? "xl" : "2xl"} fontWeight="bold">Bitcoin (BTC)</Text>
+            <Text fontSize={isMobile ? "xl" : "2xl"} fontWeight="bold">{symbol}</Text>
             <Text color={coinInfo.priceChangePercent >= 0 ? "green.500" : "red.500"}>
               {coinInfo.priceChangePercent.toFixed(2)}%
             </Text>

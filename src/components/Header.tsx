@@ -32,7 +32,8 @@ export const Header = () => {
     { path: '/market', label: 'Market' },
     { path: '/portfolio', label: 'Portfolio' },
     { path: '/analytics', label: 'Analytics' },
-    { path: '/reports', label: 'Reports' }
+    { path: '/reports', label: 'Reports' },
+    { path: '/alerts', label: 'Alertas' }
   ]
 
   const MenuItems = () => (
@@ -79,12 +80,16 @@ export const Header = () => {
             variant="ghost"
             mr={4}
           />
-          <IconButton
-            aria-label="Notifications"
-            icon={<BellIcon />}
-            variant="ghost"
-            mr={4}
-          />
+          <Link as={RouterLink} to="/alerts">
+            <IconButton
+              aria-label="Alertas"
+              icon={<BellIcon />}
+              variant="ghost"
+              mr={4}
+              color={location.pathname === '/alerts' ? 'brand.primary' : undefined}
+              _hover={{ color: 'brand.primary' }}
+            />
+          </Link>
           {isMobile && (
             <IconButton
               aria-label="Open menu"
