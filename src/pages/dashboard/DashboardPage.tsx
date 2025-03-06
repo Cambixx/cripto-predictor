@@ -42,9 +42,10 @@ import {
   MenuList,
   MenuItem,
   Portal,
-  Divider
+  Divider,
+  Tooltip
 } from '@chakra-ui/react'
-import { BellIcon, InfoOutlineIcon, StarIcon, AddIcon, ExternalLinkIcon, SearchIcon, ChevronDownIcon } from '@chakra-ui/icons'
+import { BellIcon, InfoOutlineIcon, StarIcon, AddIcon, ExternalLinkIcon, SearchIcon, ChevronDownIcon, RepeatIcon, SmallAddIcon } from '@chakra-ui/icons'
 import { Link as RouterLink } from 'react-router-dom'
 import { CryptoChart } from '../../components/CryptoChart'
 import { TradingSignals } from '../../components/TradingSignals'
@@ -1161,12 +1162,15 @@ export const DashboardPage = () => {
 
   return (
     <Grid
-      templateColumns={{ base: '1fr', lg: 'repeat(3, 1fr)' }}
-      templateRows={{ base: 'auto', lg: 'auto auto auto' }}
-      gap={6}
+      templateColumns={{ base: '1fr', md: 'repeat(2, 1fr)', lg: 'repeat(3, 1fr)' }}
+      templateRows={{ base: 'repeat(3, auto)', md: 'auto auto auto', lg: 'auto auto auto' }}
+      gap={{ base: 3, md: 4, lg: 6 }}
+      width="100%"
+      maxWidth="100%"
+      px={{ base: 2, md: 4, lg: 6 }}
     >
       {/* Header - Información general y controles */}
-      <GridItem colSpan={{ base: 1, lg: 3 }}>
+      <GridItem colSpan={{ base: 1, md: 2, lg: 3 }}>
         <Flex 
           justify="space-between" 
           align={{ base: "stretch", md: "center" }}
@@ -1174,55 +1178,72 @@ export const DashboardPage = () => {
           gap={4}
           mb={4}
         >
-          <Box>
-            <Heading size="lg" color="white">Trading Dashboard</Heading>
-            <Text color="gray.400" fontSize="sm">Mercado en tiempo real con señales avanzadas y alertas</Text>
-          </Box>
+          <Heading color="white" size="lg">Dashboard de Trading</Heading>
           
-          <HStack spacing={4}>
-            <SymbolSelector 
-              symbols={availableSymbols}
-              activeSymbol={activeSymbol}
-              onChange={handleSymbolChange}
-            />
+          <HStack wrap="wrap" spacing={4} justify={{ base: "space-between", md: "flex-end" }} width={{ base: "100%", md: "auto" }}>
+            <HStack>
+              <Text color="gray.400" fontSize="sm">Perfil de Riesgo:</Text>
+              <Select 
+                size="sm" 
+                width="140px"
+                value={riskProfile}
+                onChange={handleRiskProfileChange}
+              >
+                <option value="conservative">Conservador</option>
+                <option value="moderate">Moderado</option>
+                <option value="aggressive">Agresivo</option>
+              </Select>
+            </HStack>
             
-            <Button 
-              leftIcon={<BellIcon />} 
-              size="sm" 
-              colorScheme="blue" 
-              variant="outline"
-              onClick={handleEnableNotifications}
-            >
-              Activar Alertas
-            </Button>
-            
-            <Button 
-              colorScheme="green" 
-              size="sm"
-              isLoading={refreshing}
-              onClick={handleRefresh}
-            >
-              Actualizar
-            </Button>
+            <Tooltip label="Recargar datos">
+              <Button 
+                size="sm"
+                colorScheme="blue"
+                isLoading={refreshing}
+                onClick={handleRefresh}
+                leftIcon={<RepeatIcon />}
+              >
+                Actualizar
+              </Button>
+            </Tooltip>
           </HStack>
         </Flex>
       </GridItem>
 
       {/* Panel izquierdo - Gráfico y estadísticas de mercado */}
-      <GridItem colSpan={{ base: 1, lg: 2 }} rowSpan={{ base: 1, lg: 2 }}>
-        <VStack spacing={6} align="stretch">
+      <GridItem colSpan={{ base: 1, md: 2, lg: 2 }} rowSpan={{ base: 1, lg: 2 }}>
+        <VStack spacing={{ base: 3, md: 4, lg: 6 }} align="stretch">
           {/* Gráfico principal */}
           <Box 
-            p={6} 
+            p={{ base: 3, md: 4, lg: 6 }}
             bg={bgColor} 
             borderRadius="xl" 
             borderWidth="1px" 
             borderColor={borderColor}
             boxShadow="xl"
+            overflow="hidden"
           >
-            <Skeleton isLoaded={!loading} height={loading ? "400px" : "auto"}>
-              <CryptoChart symbol={activeSymbol} />
-            </Skeleton>
+            <VStack spacing={3} align="stretch">
+              <Flex 
+                justify="space-between" 
+                align="center" 
+                wrap="wrap"
+                gap={2}
+              >
+                <Heading size="md" color="white">
+                  {activeSymbol}
+                </Heading>
+                <SymbolSelector 
+                  symbols={availableSymbols} 
+                  activeSymbol={activeSymbol} 
+                  onChange={handleSymbolChange}
+                />
+              </Flex>
+              
+              <Skeleton isLoaded={!loading} height={loading ? "400px" : "auto"} minH="300px">
+                <CryptoChart symbol={activeSymbol} />
+              </Skeleton>
+            </VStack>
           </Box>
           
           {/* Estrategias de trading */}
@@ -1235,7 +1256,7 @@ export const DashboardPage = () => {
                 />
               ) : (
                 <Box 
-                  p={6} 
+                  p={{ base: 3, md: 4, lg: 6 }}
                   bg={bgColor} 
                   borderRadius="xl" 
                   borderWidth="1px" 
@@ -1257,64 +1278,58 @@ export const DashboardPage = () => {
       </GridItem>
 
       {/* Panel derecho - Señales y alertas */}
-      <GridItem colSpan={1} rowSpan={{ base: 1, lg: 2 }}>
-        <VStack spacing={6} align="stretch">
+      <GridItem colSpan={{ base: 1, md: 1, lg: 1 }} rowSpan={{ base: 1, md: 2, lg: 2 }}>
+        <VStack spacing={{ base: 3, md: 4, lg: 6 }} align="stretch" height="100%">
           {/* Resumen de señales */}
           <Box 
-            p={6} 
+            p={{ base: 3, md: 4, lg: 6 }}
             bg={bgColor} 
             borderRadius="xl" 
             borderWidth="1px" 
             borderColor={borderColor}
             boxShadow="xl"
+            height="100%"
           >
             <Skeleton isLoaded={!loading} height={loading ? "400px" : "auto"}>
               <VStack spacing={4} align="stretch">
                 <Flex justify="space-between" align="center">
-                  <Heading size="md" color="white">Señales de Trading</Heading>
+                  <Heading size="md" color="white">Señales</Heading>
                   <HStack>
-                    <Select 
-                      size="sm" 
-                      width="auto" 
-                      value={riskProfile} 
-                      onChange={handleRiskProfileChange}
-                      bg="gray.700"
-                      borderColor="gray.600"
-                    >
-                      <option value="conservative">Conservador</option>
-                      <option value="moderate">Moderado</option>
-                      <option value="aggressive">Agresivo</option>
-                    </Select>
                     <Button
-                      size="sm"
-                      leftIcon={<InfoOutlineIcon />}
-                      variant="ghost"
+                      size="xs"
+                      variant="outline"
                       colorScheme="blue"
+                      leftIcon={<SmallAddIcon />}
                       onClick={() => {
                         toast({
-                          title: 'Perfil de Riesgo',
-                          description: `Conservador: menor riesgo, menor retorno.
-                                      Moderado: equilibrio riesgo/retorno.
-                                      Agresivo: mayor riesgo, mayor retorno potencial.`,
-                          status: 'info',
+                          title: "Próximamente",
+                          description: "La creación de señales personalizadas estará disponible próximamente",
+                          status: "info",
                           duration: 7000,
                           isClosable: true,
                         });
                       }}
-                    />
+                    >
+                      Crear
+                    </Button>
                   </HStack>
                 </Flex>
 
-                <Tabs variant="soft-rounded" colorScheme="blue" size="sm">
-                  <TabList>
-                    <Tab>Compra ({filteredBuySignals.length})</Tab>
-                    <Tab>Venta ({filteredSellSignals.length})</Tab>
-                    <Tab>Destacados</Tab>
+                <Tabs variant="soft-rounded" colorScheme="blue" size="sm" isLazy>
+                  <TabList overflowX="auto" width="100%" flexWrap="nowrap" css={{
+                    scrollbarWidth: 'none',
+                    '&::-webkit-scrollbar': {
+                      display: 'none',
+                    },
+                  }}>
+                    <Tab minWidth="auto" whiteSpace="nowrap">Compra ({filteredBuySignals.length})</Tab>
+                    <Tab minWidth="auto" whiteSpace="nowrap">Venta ({filteredSellSignals.length})</Tab>
+                    <Tab minWidth="auto" whiteSpace="nowrap">Destacados</Tab>
                   </TabList>
                   
                   <TabPanels mt={4}>
                     <TabPanel p={0}>
-                      <VStack spacing={2} align="stretch" maxH="300px" overflowY="auto">
+                      <VStack spacing={2} align="stretch" maxH={{ base: "250px", md: "300px" }} overflowY="auto">
                         {displayBuySignals && displayBuySignals.length > 0 ? (
                           displayBuySignals.map((signal: TradingSignal) => (
                             <Flex 
@@ -1352,7 +1367,7 @@ export const DashboardPage = () => {
                     </TabPanel>
                     
                     <TabPanel p={0}>
-                      <VStack spacing={2} align="stretch" maxH="300px" overflowY="auto">
+                      <VStack spacing={2} align="stretch" maxH={{ base: "250px", md: "300px" }} overflowY="auto">
                         {displaySellSignals && displaySellSignals.length > 0 ? (
                           displaySellSignals.map((signal: TradingSignal) => (
                             <Flex 
@@ -1390,7 +1405,7 @@ export const DashboardPage = () => {
                     </TabPanel>
                     
                     <TabPanel p={0}>
-                      <VStack spacing={2} align="stretch" maxH="300px" overflowY="auto">
+                      <VStack spacing={2} align="stretch" maxH={{ base: "250px", md: "300px" }} overflowY="auto">
                         {dashboardSignals && dashboardSignals.length > 0 ? (
                           dashboardSignals
                             .filter(signal => signal.confidence === ConfidenceLevel.HIGH || signal.confidence === ConfidenceLevel.VERY_HIGH)
@@ -1458,7 +1473,7 @@ export const DashboardPage = () => {
           
           {/* Resumen de alertas */}
           <Box 
-            p={6} 
+            p={{ base: 3, md: 4, lg: 6 }}
             bg={bgColor} 
             borderRadius="xl" 
             borderWidth="1px" 
@@ -1544,9 +1559,9 @@ export const DashboardPage = () => {
       </GridItem>
 
       {/* Panel inferior - Transacciones y estadísticas */}
-      <GridItem colSpan={{ base: 1, lg: 3 }}>
+      <GridItem colSpan={{ base: 1, md: 2, lg: 3 }}>
         <Box 
-          p={6} 
+          p={{ base: 3, md: 4, lg: 6 }}
           bg={bgColor} 
           borderRadius="xl" 
           borderWidth="1px" 
@@ -1556,7 +1571,7 @@ export const DashboardPage = () => {
           <Skeleton isLoaded={!loading} height={loading ? "200px" : "auto"}>
             <VStack spacing={4} align="stretch">
               <Heading size="md" color="white">Resumen del Mercado</Heading>
-              <SimpleGrid columns={{ base: 1, md: 2, lg: 4 }} spacing={4}>
+              <SimpleGrid columns={{ base: 1, sm: 2, md: 2, lg: 4 }} spacing={4}>
                 <Stat>
                   <StatLabel color="gray.400">Operaciones</StatLabel>
                   <StatNumber color="white">24</StatNumber>
@@ -1590,7 +1605,7 @@ export const DashboardPage = () => {
                     {((signals?.buySignals.length || 0) + (signals?.sellSignals.length || 0))}
                   </StatNumber>
                   <StatHelpText>
-                    <HStack>
+                    <HStack spacing={1} flexWrap="wrap">
                       <Badge colorScheme="green" variant="outline">{signals?.buySignals.length || 0} compra</Badge>
                       <Badge colorScheme="red" variant="outline">{signals?.sellSignals.length || 0} venta</Badge>
                     </HStack>
