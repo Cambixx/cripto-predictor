@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useMemo } from 'react'
 import { 
   VStack, 
   HStack, 
@@ -32,26 +32,563 @@ import {
   ModalBody,
   ModalCloseButton,
   Select,
-  useToast
+  useToast,
+  ModalFooter,
+  Input,
+  InputGroup,
+  InputLeftElement,
+  Menu,
+  MenuButton,
+  MenuList,
+  MenuItem,
+  Portal,
+  Divider
 } from '@chakra-ui/react'
-import { BellIcon, InfoOutlineIcon, StarIcon, AddIcon, ExternalLinkIcon } from '@chakra-ui/icons'
+import { BellIcon, InfoOutlineIcon, StarIcon, AddIcon, ExternalLinkIcon, SearchIcon, ChevronDownIcon } from '@chakra-ui/icons'
 import { Link as RouterLink } from 'react-router-dom'
 import { CryptoChart } from '../../components/CryptoChart'
 import { TradingSignals } from '../../components/TradingSignals'
 import { TransactionsOverview } from '../../components/TransactionsOverview'
 import { TradingStrategiesCard } from '../../components/TradingStrategiesCard'
 import { AlertsManager } from '../../components/AlertsManager'
-import { generateTradingSignals, type TradingSignal, generateDashboardSignals, type DashboardSignal, type TopSignals, SignalType, ConfidenceLevel } from '../../services/tradingSignals'
+import { 
+  generateTradingSignals, 
+  type TradingSignal, 
+  generateDashboardSignals, 
+  type DashboardSignal, 
+  type TopSignals, 
+  SignalType, 
+  ConfidenceLevel, 
+  getDefaultTechnicalAnalysis,
+  generateExampleSignal,
+  type TradingPattern,
+  generateTradingStrategy
+} from '../../services/tradingSignals'
 import { getActiveTradingPairs, getCoinData } from '../../services/api'
-import { registerForPushNotifications } from '../../services/notificationService'
+import { registerForPushNotifications, getUserAlerts, UserAlert } from '../../services/notificationService'
 
 // ID de usuario simulado
 const MOCK_USER_ID = 'user123';
 
+// Modal de detalles de señal
+const SignalDetailsModal = ({ 
+  isOpen, 
+  onClose, 
+  signal 
+}: { 
+  isOpen: boolean; 
+  onClose: () => void; 
+  signal: TradingSignal | null;
+}) => {
+  const bgColor = useColorModeValue('gray.800', 'gray.900');
+  const borderColor = useColorModeValue('gray.700', 'gray.600');
+  const toast = useToast();
+  
+  if (!signal) return null;
+  
+  // Formatear porcentaje con signo
+  const formatPercent = (value: number) => {
+    const sign = value >= 0 ? '+' : '';
+    return `${sign}${value.toFixed(2)}%`;
+  };
+  
+  // Determinar el estado del indicador (positivo, neutral, negativo)
+  const getIndicatorStatus = (name: string, value: number): 'positive' | 'negative' | 'neutral' => {
+    switch (name) {
+      case 'rsi':
+        return value > 70 ? 'negative' : value < 30 ? 'positive' : 'neutral';
+      case 'macd':
+        return value > 0 ? 'positive' : value < 0 ? 'negative' : 'neutral';
+      case 'adx':
+        return value > 25 ? 'positive' : 'neutral';
+      default:
+        return 'neutral';
+    }
+  };
+  
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} size="xl">
+      <ModalOverlay />
+      <ModalContent bg={bgColor} color="white">
+        <ModalHeader>
+          Análisis Detallado {signal.symbol}
+          <Badge 
+            ml={2} 
+            colorScheme={signal.signal === 'buy' ? 'green' : 'red'}
+          >
+            {signal.signal === 'buy' ? 'COMPRA' : 'VENTA'}
+          </Badge>
+        </ModalHeader>
+        <ModalCloseButton />
+        
+        <ModalBody>
+          <VStack spacing={6} align="stretch">
+            {/* Resumen de precio */}
+            <Box 
+              p={4} 
+              borderRadius="md" 
+              bg="gray.700" 
+              boxShadow="md"
+            >
+              <SimpleGrid columns={2} spacing={4}>
+                <VStack align="flex-start">
+                  <Text fontSize="sm" color="gray.400">Precio Actual</Text>
+                  <Heading size="lg">${signal.price.toLocaleString()}</Heading>
+                  <HStack>
+                    <StatArrow 
+                      type={signal.priceChange24h >= 0 ? 'increase' : 'decrease'} 
+                    />
+                    <Text 
+                      fontWeight="bold" 
+                      color={signal.priceChange24h >= 0 ? 'green.400' : 'red.400'}
+                    >
+                      {formatPercent(signal.priceChange24h)}
+                    </Text>
+                    <Text fontSize="sm" color="gray.400">24h</Text>
+                  </HStack>
+                </VStack>
+                
+                <VStack align="flex-start">
+                  <Text fontSize="sm" color="gray.400">Confianza de la Señal</Text>
+                  <Heading size="lg">{Math.round(signal.confidence * 100)}%</Heading>
+                  <Text 
+                    fontSize="sm" 
+                    color={
+                      signal.confidence > 0.8 ? 'green.400' : 
+                      signal.confidence > 0.6 ? 'yellow.400' : 'red.400'
+                    }
+                  >
+                    {signal.confidence > 0.8 ? 'ALTA' : 
+                     signal.confidence > 0.6 ? 'MEDIA' : 'BAJA'}
+                  </Text>
+                </VStack>
+              </SimpleGrid>
+            </Box>
+            
+            {/* Indicadores Técnicos */}
+            <Box>
+              <Heading size="md" mb={4}>Indicadores Técnicos</Heading>
+              <SimpleGrid columns={{ base: 1, md: 3 }} spacing={4}>
+                {/* RSI */}
+                <Box 
+                  p={4} 
+                  borderRadius="md" 
+                  bg="gray.700"
+                  borderLeftWidth="4px"
+                  borderLeftColor={
+                    signal.technicalAnalysis.indicators.rsi > 70 ? 'red.500' :
+                    signal.technicalAnalysis.indicators.rsi < 30 ? 'green.500' : 'blue.500'
+                  }
+                >
+                  <VStack align="stretch" spacing={1}>
+                    <Flex justify="space-between">
+                      <Text fontWeight="bold">RSI</Text>
+                      <Text>{signal.technicalAnalysis.indicators.rsi.toFixed(2)}</Text>
+                    </Flex>
+                    <Text fontSize="xs" color="gray.400">
+                      {signal.technicalAnalysis.indicators.rsi > 70 ? 'Sobrecomprado' :
+                       signal.technicalAnalysis.indicators.rsi < 30 ? 'Sobrevendido' : 'Neutral'}
+                    </Text>
+                    {signal.technicalAnalysis.indicators.rsiDivergence.bullish && (
+                      <Badge colorScheme="green" mt={1}>Divergencia Alcista</Badge>
+                    )}
+                    {signal.technicalAnalysis.indicators.rsiDivergence.bearish && (
+                      <Badge colorScheme="red" mt={1}>Divergencia Bajista</Badge>
+                    )}
+                  </VStack>
+                </Box>
+                
+                {/* MACD */}
+                <Box 
+                  p={4} 
+                  borderRadius="md" 
+                  bg="gray.700"
+                  borderLeftWidth="4px"
+                  borderLeftColor={
+                    signal.technicalAnalysis.indicators.macd.histogram > 0 ? 'green.500' :
+                    signal.technicalAnalysis.indicators.macd.histogram < 0 ? 'red.500' : 'blue.500'
+                  }
+                >
+                  <VStack align="stretch" spacing={1}>
+                    <Flex justify="space-between">
+                      <Text fontWeight="bold">MACD</Text>
+                      <Text>{signal.technicalAnalysis.indicators.macd.histogram.toFixed(2)}</Text>
+                    </Flex>
+                    <Text fontSize="xs" color="gray.400">
+                      {signal.technicalAnalysis.indicators.macd.histogram > 0 ? 'Tendencia Alcista' :
+                       signal.technicalAnalysis.indicators.macd.histogram < 0 ? 'Tendencia Bajista' : 'Neutral'}
+                    </Text>
+                  </VStack>
+                </Box>
+                
+                {/* ADX */}
+                <Box 
+                  p={4} 
+                  borderRadius="md" 
+                  bg="gray.700"
+                  borderLeftWidth="4px"
+                  borderLeftColor={
+                    signal.technicalAnalysis.indicators.adx > 25 ? 'green.500' : 'gray.500'
+                  }
+                >
+                  <VStack align="stretch" spacing={1}>
+                    <Flex justify="space-between">
+                      <Text fontWeight="bold">ADX</Text>
+                      <Text>{signal.technicalAnalysis.indicators.adx.toFixed(2)}</Text>
+                    </Flex>
+                    <Text fontSize="xs" color="gray.400">
+                      {signal.technicalAnalysis.indicators.adx > 25 ? 'Tendencia Fuerte' : 'Tendencia Débil'}
+                    </Text>
+                  </VStack>
+                </Box>
+                
+                {/* Bandas de Bollinger */}
+                <Box 
+                  p={4} 
+                  borderRadius="md" 
+                  bg="gray.700"
+                >
+                  <VStack align="stretch" spacing={1}>
+                    <Text fontWeight="bold">Bandas Bollinger</Text>
+                    <HStack justify="space-between">
+                      <Text fontSize="xs" color="gray.400">Superior:</Text>
+                      <Text fontSize="xs">${signal.technicalAnalysis.indicators.bollingerBands.upper.toFixed(2)}</Text>
+                    </HStack>
+                    <HStack justify="space-between">
+                      <Text fontSize="xs" color="gray.400">Media:</Text>
+                      <Text fontSize="xs">${signal.technicalAnalysis.indicators.bollingerBands.middle.toFixed(2)}</Text>
+                    </HStack>
+                    <HStack justify="space-between">
+                      <Text fontSize="xs" color="gray.400">Inferior:</Text>
+                      <Text fontSize="xs">${signal.technicalAnalysis.indicators.bollingerBands.lower.toFixed(2)}</Text>
+                    </HStack>
+                    <Text fontSize="xs" color="gray.400" mt={1}>
+                      {signal.price > signal.technicalAnalysis.indicators.bollingerBands.upper ? 'Precio por encima de banda superior' :
+                       signal.price < signal.technicalAnalysis.indicators.bollingerBands.lower ? 'Precio por debajo de banda inferior' : 'Precio dentro de las bandas'}
+                    </Text>
+                  </VStack>
+                </Box>
+                
+                {/* EMAs */}
+                <Box 
+                  p={4} 
+                  borderRadius="md" 
+                  bg="gray.700"
+                  borderLeftWidth="4px"
+                  borderLeftColor={
+                    signal.technicalAnalysis.indicators.ema && 
+                    signal.technicalAnalysis.indicators.ema.ema50 !== undefined && 
+                    signal.technicalAnalysis.indicators.ema.ema200 !== undefined ?
+                      (signal.technicalAnalysis.indicators.ema.ema50 > signal.technicalAnalysis.indicators.ema.ema200 ? 'green.500' :
+                       signal.technicalAnalysis.indicators.ema.ema50 < signal.technicalAnalysis.indicators.ema.ema200 ? 'red.500' : 'blue.500')
+                    : 'blue.500'
+                  }
+                >
+                  <VStack align="stretch" spacing={1}>
+                    <Text fontWeight="bold">Medias Móviles</Text>
+                    <HStack justify="space-between">
+                      <Text fontSize="xs" color="gray.400">EMA 50:</Text>
+                      <Text fontSize="xs">${signal.technicalAnalysis.indicators.ema?.ema50?.toFixed(2) || 'N/A'}</Text>
+                    </HStack>
+                    <HStack justify="space-between">
+                      <Text fontSize="xs" color="gray.400">EMA 200:</Text>
+                      <Text fontSize="xs">${signal.technicalAnalysis.indicators.ema?.ema200?.toFixed(2) || 'N/A'}</Text>
+                    </HStack>
+                    {signal.technicalAnalysis.indicators.ema && 
+                     signal.technicalAnalysis.indicators.ema.ema50 !== undefined && 
+                     signal.technicalAnalysis.indicators.ema.ema200 !== undefined && (
+                      <Text fontSize="xs" color="gray.400" mt={1}>
+                        {signal.technicalAnalysis.indicators.ema.ema50 > signal.technicalAnalysis.indicators.ema.ema200 ? 'Tendencia alcista (Golden Cross)' :
+                         signal.technicalAnalysis.indicators.ema.ema50 < signal.technicalAnalysis.indicators.ema.ema200 ? 'Tendencia bajista (Death Cross)' : 'Tendencia neutral'}
+                      </Text>
+                    )}
+                  </VStack>
+                </Box>
+                
+                {/* Ichimoku */}
+                <Box 
+                  p={4} 
+                  borderRadius="md" 
+                  bg="gray.700"
+                >
+                  <VStack align="stretch" spacing={1}>
+                    <Text fontWeight="bold">Ichimoku Cloud</Text>
+                    <HStack justify="space-between">
+                      <Text fontSize="xs" color="gray.400">Tenkan-sen:</Text>
+                      <Text fontSize="xs">${signal.technicalAnalysis.indicators.ichimokuCloud.tenkanSen.toFixed(2)}</Text>
+                    </HStack>
+                    <HStack justify="space-between">
+                      <Text fontSize="xs" color="gray.400">Kijun-sen:</Text>
+                      <Text fontSize="xs">${signal.technicalAnalysis.indicators.ichimokuCloud.kijunSen.toFixed(2)}</Text>
+                    </HStack>
+                    <Text fontSize="xs" color="gray.400" mt={1}>
+                      {signal.price > signal.technicalAnalysis.indicators.ichimokuCloud.senkouSpanA && 
+                       signal.price > signal.technicalAnalysis.indicators.ichimokuCloud.senkouSpanB ? 'Tendencia alcista fuerte' :
+                       signal.price < signal.technicalAnalysis.indicators.ichimokuCloud.senkouSpanA && 
+                       signal.price < signal.technicalAnalysis.indicators.ichimokuCloud.senkouSpanB ? 'Tendencia bajista fuerte' : 'Tendencia mixta'}
+                    </Text>
+                  </VStack>
+                </Box>
+              </SimpleGrid>
+            </Box>
+            
+            {/* Niveles de Soporte y Resistencia */}
+            <Box>
+              <Heading size="md" mb={4}>Niveles Clave</Heading>
+              <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+                <Box p={4} borderRadius="md" bg="gray.700">
+                  <VStack align="stretch" spacing={2}>
+                    <Text fontWeight="bold" color="green.400">Niveles de Soporte</Text>
+                    {signal.technicalAnalysis.supportLevels.map((level, index) => (
+                      <Flex key={`support-${index}`} justify="space-between">
+                        <Text fontSize="sm">S{index + 1}:</Text>
+                        <Text fontSize="sm">${level.toFixed(2)}</Text>
+                      </Flex>
+                    ))}
+                  </VStack>
+                </Box>
+                
+                <Box p={4} borderRadius="md" bg="gray.700">
+                  <VStack align="stretch" spacing={2}>
+                    <Text fontWeight="bold" color="red.400">Niveles de Resistencia</Text>
+                    {signal.technicalAnalysis.resistanceLevels.map((level, index) => (
+                      <Flex key={`resistance-${index}`} justify="space-between">
+                        <Text fontSize="sm">R{index + 1}:</Text>
+                        <Text fontSize="sm">${level.toFixed(2)}</Text>
+                      </Flex>
+                    ))}
+                  </VStack>
+                </Box>
+              </SimpleGrid>
+            </Box>
+            
+            {/* Razones para la señal */}
+            <Box>
+              <Heading size="md" mb={4}>Razones</Heading>
+              <Box p={4} borderRadius="md" bg="gray.700">
+                <VStack align="stretch" spacing={2}>
+                  {signal.reasons.map((reason, index) => (
+                    <HStack key={`reason-${index}`} spacing={2}>
+                      <Icon as={InfoOutlineIcon} color="blue.400" />
+                      <Text>{reason}</Text>
+                    </HStack>
+                  ))}
+                </VStack>
+              </Box>
+            </Box>
+            
+            {/* Sentimiento del Mercado */}
+            <Box>
+              <Heading size="md" mb={4}>Sentimiento del Mercado</Heading>
+              <Box p={4} borderRadius="md" bg="gray.700">
+                <VStack align="stretch" spacing={4}>
+                  <Flex justify="space-between">
+                    <Text>Sentimiento General:</Text>
+                    <Badge
+                      colorScheme={
+                        signal.marketSentiment.overallSentiment === 'positive' ? 'green' :
+                        signal.marketSentiment.overallSentiment === 'negative' ? 'red' : 'gray'
+                      }
+                    >
+                      {signal.marketSentiment.overallSentiment === 'positive' ? 'POSITIVO' :
+                       signal.marketSentiment.overallSentiment === 'negative' ? 'NEGATIVO' : 'NEUTRAL'}
+                    </Badge>
+                  </Flex>
+                  
+                  <Flex justify="space-between">
+                    <Text>Menciones en Redes Sociales:</Text>
+                    <Text>{signal.marketSentiment.socialMediaMentions.toLocaleString()}</Text>
+                  </Flex>
+                  
+                  <Flex justify="space-between">
+                    <Text>Puntuación en Noticias:</Text>
+                    <Text>{signal.marketSentiment.newsScore.toFixed(1)}/10</Text>
+                  </Flex>
+                  
+                  {signal.marketSentiment.relevantNews.length > 0 && (
+                    <VStack align="stretch" spacing={2} mt={2}>
+                      <Text fontWeight="bold">Noticias Recientes:</Text>
+                      {signal.marketSentiment.relevantNews.slice(0, 3).map((news, index) => (
+                        <Box key={`news-${index}`} p={2} borderRadius="md" bg="gray.800">
+                          <HStack justify="space-between">
+                            <Text fontSize="sm">{news.headline}</Text>
+                            <Badge
+                              size="sm"
+                              colorScheme={
+                                news.sentiment === 'positive' ? 'green' :
+                                news.sentiment === 'negative' ? 'red' : 'gray'
+                              }
+                            >
+                              {news.sentiment.toUpperCase()}
+                            </Badge>
+                          </HStack>
+                          <HStack mt={1} spacing={2}>
+                            <Text fontSize="xs" color="gray.400">{news.source}</Text>
+                            <Text fontSize="xs" color="gray.400">{news.date}</Text>
+                          </HStack>
+                        </Box>
+                      ))}
+                    </VStack>
+                  )}
+                </VStack>
+              </Box>
+            </Box>
+          </VStack>
+        </ModalBody>
+        
+        <ModalFooter>
+          <Button 
+            colorScheme={signal.signal === 'buy' ? 'green' : 'red'} 
+            mr={3}
+            onClick={() => {
+              const alertConfig = {
+                symbol: signal.symbol,
+                signalType: signal.signal,
+                confidenceThreshold: 0.7,
+                enabled: true,
+                notificationType: 'push',
+              };
+              
+              // Aquí podrías implementar la lógica para guardar la alerta
+              toast({
+                title: 'Alerta Creada',
+                description: `Se creará una alerta para ${signal.symbol}`,
+                status: 'success',
+                duration: 3000,
+              });
+              
+              onClose();
+            }}
+          >
+            Crear Alerta
+          </Button>
+          <Button variant="ghost" onClick={onClose}>
+            Cerrar
+          </Button>
+        </ModalFooter>
+      </ModalContent>
+    </Modal>
+  );
+};
+
+// Componente para selección de símbolo con búsqueda
+const SymbolSelector = ({ 
+  symbols, 
+  activeSymbol, 
+  onChange 
+}: { 
+  symbols: string[]; 
+  activeSymbol: string; 
+  onChange: (symbol: string) => void 
+}) => {
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  
+  const bgColor = useColorModeValue('gray.800', 'gray.900');
+  const hoverBgColor = useColorModeValue('gray.700', 'gray.800');
+  const borderColor = useColorModeValue('gray.700', 'gray.600');
+  
+  // Filtrar los símbolos según el texto de búsqueda
+  const filteredSymbols = useMemo(() => {
+    if (!searchQuery.trim()) return symbols;
+    
+    const query = searchQuery.toLowerCase();
+    return symbols.filter(symbol => 
+      symbol.toLowerCase().includes(query)
+    );
+  }, [symbols, searchQuery]);
+  
+  // Función para seleccionar un símbolo
+  const handleSelect = (symbol: string) => {
+    onChange(symbol);
+    setIsMenuOpen(false);
+    setSearchQuery('');
+  };
+  
+  return (
+    <Box position="relative" width="200px">
+      <Menu isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} closeOnSelect={false}>
+        <MenuButton
+          as={Button}
+          rightIcon={<ChevronDownIcon />}
+          onClick={() => setIsMenuOpen(true)}
+          width="100%"
+          bg={bgColor}
+          borderColor={borderColor}
+          textAlign="left"
+          fontSize="sm"
+        >
+          {activeSymbol}
+        </MenuButton>
+        
+        <Portal>
+          <MenuList 
+            maxH="300px" 
+            overflowY="auto" 
+            bg={bgColor}
+            borderColor={borderColor}
+            minW="200px"
+            css={{
+              '&::-webkit-scrollbar': {
+                width: '4px',
+              },
+              '&::-webkit-scrollbar-track': {
+                width: '6px',
+              },
+              '&::-webkit-scrollbar-thumb': {
+                background: 'gray',
+                borderRadius: '24px',
+              },
+            }}
+          >
+            <Box px={3} pt={2} pb={3}>
+              <InputGroup size="sm">
+                <InputLeftElement pointerEvents="none">
+                  <SearchIcon color="gray.400" />
+                </InputLeftElement>
+                <Input
+                  placeholder="Buscar símbolo..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  variant="filled"
+                  autoFocus
+                  onClick={(e) => e.stopPropagation()}
+                  bg="gray.700"
+                  _focus={{ bg: "gray.600" }}
+                  _hover={{ bg: "gray.600" }}
+                />
+              </InputGroup>
+            </Box>
+            
+            <Divider />
+            
+            {filteredSymbols.length > 0 ? (
+              filteredSymbols.map((symbol) => (
+                <MenuItem 
+                  key={symbol} 
+                  onClick={() => handleSelect(symbol)}
+                  bg={symbol === activeSymbol ? hoverBgColor : 'transparent'}
+                  fontWeight={symbol === activeSymbol ? 'bold' : 'normal'}
+                  _hover={{ bg: hoverBgColor }}
+                >
+                  {symbol}
+                </MenuItem>
+              ))
+            ) : (
+              <Box py={3} px={4} textAlign="center">
+                <Text fontSize="sm" color="gray.400">No se encontraron resultados</Text>
+              </Box>
+            )}
+          </MenuList>
+        </Portal>
+      </Menu>
+    </Box>
+  );
+};
+
 export const DashboardPage = () => {
   const bgColor = useColorModeValue('gray.800', 'gray.900');
   const borderColor = useColorModeValue('gray.700', 'gray.600');
-  const { isOpen, onOpen, onClose } = useDisclosure();
   const toast = useToast();
   
   // Estados para el dashboard
@@ -64,6 +601,22 @@ export const DashboardPage = () => {
   
   // Estado para las señales del dashboard
   const [dashboardSignals, setDashboardSignals] = useState<DashboardSignal[]>([]);
+  
+  // Estado para las alertas del usuario
+  const [userAlerts, setUserAlerts] = useState<UserAlert[]>([]);
+  
+  // Estado para el perfil de riesgo del usuario
+  const [riskProfile, setRiskProfile] = useState<'conservative' | 'moderate' | 'aggressive'>('moderate');
+  
+  // Estado para patrones de trading recomendados
+  const [tradingPatterns, setTradingPatterns] = useState<TradingPattern[]>([]);
+  
+  // Modal de detalles
+  const {
+    isOpen: isDetailsOpen,
+    onOpen: onDetailsOpen,
+    onClose: onDetailsClose
+  } = useDisclosure();
 
   // Función auxiliar para cargar señales del dashboard
   const loadDashboardSignals = useCallback(async (count: number = 5) => {
@@ -76,6 +629,17 @@ export const DashboardPage = () => {
       console.error("Error cargando señales del dashboard:", error);
       // En caso de error, establecemos un array vacío
       setDashboardSignals([]);
+    }
+  }, []);
+
+  // Función para cargar las alertas del usuario
+  const loadUserAlerts = useCallback(() => {
+    try {
+      const alerts = getUserAlerts(MOCK_USER_ID);
+      setUserAlerts(alerts);
+    } catch (error) {
+      console.error("Error cargando alertas del usuario:", error);
+      setUserAlerts([]);
     }
   }, []);
 
@@ -130,6 +694,9 @@ export const DashboardPage = () => {
         // Cargar las señales del dashboard usando nuestra función auxiliar
         await loadDashboardSignals(5);
         
+        // Cargar las alertas del usuario
+        loadUserAlerts();
+        
       } catch (error) {
         console.error('Error cargando datos iniciales:', error);
         toast({
@@ -147,7 +714,7 @@ export const DashboardPage = () => {
     };
     
     loadInitialData();
-  }, [toast, loadDashboardSignals]);
+  }, [toast, loadDashboardSignals, loadUserAlerts]);
 
   // Refrescar datos
   const handleRefresh = async () => {
@@ -166,6 +733,9 @@ export const DashboardPage = () => {
       
       // Refrescar también las señales del dashboard
       await loadDashboardSignals(5);
+      
+      // Actualizar las alertas del usuario
+      loadUserAlerts();
       
       toast({
         title: 'Datos actualizados',
@@ -186,13 +756,13 @@ export const DashboardPage = () => {
     }
   };
 
-  // Cambiar activo seleccionado
-  const handleSymbolChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
-    setActiveSymbol(event.target.value);
+  // Cambiar activo seleccionado (versión actualizada para el nuevo selector)
+  const handleSymbolChange = (symbol: string) => {
+    setActiveSymbol(symbol);
     
     // Buscar señal correspondiente si existe
     const allSignals = [...(signals?.buySignals || []), ...(signals?.sellSignals || [])];
-    const matchingSignal = allSignals.find(signal => signal.symbol === event.target.value);
+    const matchingSignal = allSignals.find(signal => signal.symbol === symbol);
     
     if (matchingSignal) {
       setSelectedSignal(matchingSignal);
@@ -201,11 +771,10 @@ export const DashboardPage = () => {
     }
   };
 
-  // Mostrar detalles de una señal
+  // Manejar visualización de detalles de señal
   const handleViewSignalDetails = (signal: TradingSignal) => {
     setSelectedSignal(signal);
-    setActiveSymbol(signal.symbol);
-    onOpen();
+    onDetailsOpen();
   };
 
   // Activar notificaciones
@@ -230,6 +799,366 @@ export const DashboardPage = () => {
     }
   };
 
+  // Filtrar señales según el perfil de riesgo
+  const filteredBuySignals = useMemo(() => {
+    // Mostrar estadísticas de debugging
+    if (signals?.buySignals) {
+      console.log(`Total señales de compra disponibles: ${signals.buySignals.length}`);
+    }
+    
+    if (!signals?.buySignals || signals.buySignals.length === 0) {
+      console.log("No hay señales de compra base disponibles");
+      return [];
+    }
+    
+    let filtered = [];
+    
+    switch (riskProfile) {
+      case 'conservative':
+        // Para perfil conservador, solo señales con alta confianza
+        filtered = signals.buySignals.filter(
+          signal => signal.confidence > 0.7 // Reducido de 0.8
+          // Eliminada la condición restrictiva de bandas de Bollinger
+        );
+        break;
+      case 'aggressive':
+        // Para perfil agresivo, criterios más amplios
+        filtered = signals.buySignals.filter(
+          signal => signal.confidence > 0.5 || // Reducido de 0.6
+          signal.technicalAnalysis.trend === 'up' || 
+          signal.marketSentiment.overallSentiment === 'positive'
+        );
+        break;
+      case 'moderate':
+      default:
+        // Para perfil moderado
+        filtered = signals.buySignals.filter(
+          signal => signal.confidence > 0.6 // Reducido de 0.7
+        );
+        break;
+    }
+    
+    console.log(`Señales de compra filtradas (${riskProfile}): ${filtered.length}`);
+    
+    return filtered;
+  }, [signals, riskProfile]);
+  
+  const filteredSellSignals = useMemo(() => {
+    // Mostrar estadísticas de debugging
+    if (signals?.sellSignals) {
+      console.log(`Total señales de venta disponibles: ${signals.sellSignals.length}`);
+    }
+    
+    if (!signals?.sellSignals || signals.sellSignals.length === 0) {
+      console.log("No hay señales de venta base disponibles");
+      return [];
+    }
+    
+    let filtered = [];
+    
+    switch (riskProfile) {
+      case 'conservative':
+        // Para perfil conservador, vender ante primeras señales de caída
+        filtered = signals.sellSignals.filter(
+          signal => signal.confidence > 0.6 || // Reducido de 0.7
+          signal.priceChange24h < -2 || // Menos restrictivo, era -3
+          signal.technicalAnalysis.trend === 'down'
+        );
+        break;
+      case 'aggressive':
+        // Para perfil agresivo, mantener posiciones más tiempo
+        filtered = signals.sellSignals.filter(
+          signal => signal.confidence > 0.75 || // Reducido de 0.85
+          (signal.confidence > 0.6 && signal.technicalAnalysis.trend === 'down') ||
+          signal.marketSentiment.overallSentiment === 'negative'
+        );
+        break;
+      case 'moderate':
+      default:
+        // Para perfil moderado
+        filtered = signals.sellSignals.filter(
+          signal => signal.confidence > 0.65 // Reducido de 0.75
+        );
+        break;
+    }
+    
+    console.log(`Señales de venta filtradas (${riskProfile}): ${filtered.length}`);
+    
+    return filtered;
+  }, [signals, riskProfile]);
+
+  // Señales de respaldo para cuando no hay señales disponibles
+  const defaultSignals = useMemo(() => {
+    // Solo crear señales de respaldo si no hay señales filtradas
+    if ((filteredBuySignals.length === 0 && filteredSellSignals.length === 0) && 
+        availableSymbols.length > 0) {
+      
+      // Crear 3 señales de compra y 2 de venta por defecto
+      console.log("Generando señales de respaldo para el dashboard");
+      
+      const defaultSymbols = availableSymbols.slice(0, 5);
+      
+      // Generar señales de compra
+      const buySignals: TradingSignal[] = defaultSymbols.slice(0, 3).map((symbol, idx) => {
+        // Crear señales de compra con diferentes niveles de confianza
+        const confidence = 0.65 + (idx * 0.1); // 0.65, 0.75, 0.85
+        const price = 1000 + (idx * 500);
+        return generateExampleSignal(symbol, 'buy', price, confidence);
+      });
+      
+      // Generar señales de venta
+      const sellSignals: TradingSignal[] = defaultSymbols.slice(3, 5).map((symbol, idx) => {
+        // Crear señales de venta con diferentes niveles de confianza
+        const confidence = 0.7 + (idx * 0.1); // 0.7, 0.8
+        const price = 2000 + (idx * 300);
+        return generateExampleSignal(symbol, 'sell', price, confidence);
+      });
+      
+      return { buySignals, sellSignals };
+    }
+    
+    return null;
+  }, [filteredBuySignals, filteredSellSignals, availableSymbols]);
+  
+  // Señales finales a mostrar (filtradas o respaldo)
+  const displayBuySignals = useMemo(() => {
+    return filteredBuySignals.length > 0 ? filteredBuySignals : defaultSignals?.buySignals || [];
+  }, [filteredBuySignals, defaultSignals]);
+  
+  const displaySellSignals = useMemo(() => {
+    return filteredSellSignals.length > 0 ? filteredSellSignals : defaultSignals?.sellSignals || [];
+  }, [filteredSellSignals, defaultSignals]);
+  
+  // Manejar cambio de perfil de riesgo
+  const handleRiskProfileChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
+    const profile = event.target.value as 'conservative' | 'moderate' | 'aggressive';
+    setRiskProfile(profile);
+    
+    // Guardar preferencia en localStorage
+    localStorage.setItem('user_risk_profile', profile);
+    
+    toast({
+      title: 'Perfil de riesgo actualizado',
+      description: `Tus señales ahora están optimizadas para un perfil ${
+        profile === 'conservative' ? 'conservador' :
+        profile === 'aggressive' ? 'agresivo' : 'moderado'
+      }`,
+      status: 'success',
+      duration: 3000,
+    });
+  };
+  
+  // Cargar perfil de riesgo guardado
+  useEffect(() => {
+    const savedProfile = localStorage.getItem('user_risk_profile') as 'conservative' | 'moderate' | 'aggressive' | null;
+    if (savedProfile) {
+      setRiskProfile(savedProfile);
+    }
+  }, []);
+
+  // Generar estrategias de trading de ejemplo basadas en la señal seleccionada y perfil de riesgo
+  const defaultTradingPatterns = useMemo(() => {
+    if (!selectedSignal && !activeSymbol) return [];
+    
+    const symbol = selectedSignal?.symbol || activeSymbol;
+    const price = selectedSignal?.price || 1000; // Precio por defecto si no hay señal
+    
+    console.log(`Generando patrones de trading de ejemplo para ${symbol}`);
+    
+    // Determinar tendencia de mercado basada en datos disponibles
+    let marketCondition: { trend: 'up' | 'down' | 'sideways', volatility: 'high' | 'medium' | 'low' } = {
+      trend: 'sideways',
+      volatility: 'medium'
+    };
+    
+    // Si hay una señal seleccionada, usar su análisis técnico para determinar tendencia
+    if (selectedSignal?.technicalAnalysis) {
+      marketCondition.trend = selectedSignal.technicalAnalysis.trend;
+      
+      // Calcular volatilidad basada en bandas de Bollinger
+      const { upper, lower } = selectedSignal.technicalAnalysis.indicators.bollingerBands;
+      const volatilityRatio = upper / lower;
+      
+      if (volatilityRatio > 1.15) {
+        marketCondition.volatility = 'high';
+      } else if (volatilityRatio > 1.05) {
+        marketCondition.volatility = 'medium';
+      } else {
+        marketCondition.volatility = 'low';
+      }
+    }
+    // Si no hay señal, intentar estimar tendencia por el perfil de riesgo
+    else if (signals) {
+      // Buscar señales del mismo símbolo
+      const symbolSignals = [
+        ...(signals.buySignals || []), 
+        ...(signals.sellSignals || [])
+      ].filter(s => s.symbol === symbol);
+      
+      if (symbolSignals.length > 0) {
+        // Si hay señales, usar su análisis técnico
+        const signal = symbolSignals[0];
+        marketCondition.trend = signal.technicalAnalysis.trend;
+        
+        // Calcular volatilidad
+        const { upper, lower } = signal.technicalAnalysis.indicators.bollingerBands;
+        const volatilityRatio = upper / lower;
+        
+        if (volatilityRatio > 1.15) {
+          marketCondition.volatility = 'high';
+        } else if (volatilityRatio > 1.05) {
+          marketCondition.volatility = 'medium';
+        } else {
+          marketCondition.volatility = 'low';
+        }
+      }
+    }
+    
+    console.log(`Condición de mercado para ${symbol}: Tendencia ${marketCondition.trend}, Volatilidad ${marketCondition.volatility}`);
+    
+    // Tipo de patrón principal basado en señal, tendencia y perfil de riesgo
+    let primaryPatternType: 'bullish' | 'bearish' | 'neutral';
+    
+    // Si hay una señal seleccionada, ajustar patrones según su tendencia y tipo
+    if (selectedSignal) {
+      if (selectedSignal.signal === 'buy') {
+        // Para señales de compra
+        primaryPatternType = 'bullish';
+      } else {
+        // Para señales de venta
+        primaryPatternType = 'bearish';
+      }
+    } 
+    // Si no hay señal, usar tendencia detectada y perfil de riesgo
+    else {
+      switch (riskProfile) {
+        case 'conservative':
+          // Perfil conservador - Preferir estrategias a favor de la tendencia o neutrales
+          if (marketCondition.trend === 'up') {
+            primaryPatternType = Math.random() > 0.3 ? 'bullish' : 'neutral';
+          } else if (marketCondition.trend === 'down') {
+            primaryPatternType = Math.random() > 0.3 ? 'bearish' : 'neutral';
+          } else {
+            primaryPatternType = 'neutral';
+          }
+          break;
+          
+        case 'aggressive':
+          // Perfil agresivo - Más inclinado a patrones direccionales, incluso contra tendencia
+          if (marketCondition.trend === 'up') {
+            // En tendencia alcista, mayoría bullish pero también oportunidades bajistas
+            primaryPatternType = Math.random() > 0.25 ? 'bullish' : 'bearish';
+          } else if (marketCondition.trend === 'down') {
+            // En tendencia bajista, mayoría bearish pero también oportunidades bullish
+            primaryPatternType = Math.random() > 0.25 ? 'bearish' : 'bullish';
+          } else {
+            // En mercado lateral, preferir rupturas direccionales
+            primaryPatternType = Math.random() > 0.5 ? 'bullish' : 'bearish';
+          }
+          break;
+          
+        default: // Perfil moderado
+          // Moderado - Equilibrio, mayormente a favor de tendencia
+          if (marketCondition.trend === 'up') {
+            primaryPatternType = Math.random() > 0.2 ? 'bullish' : (Math.random() > 0.5 ? 'bearish' : 'neutral');
+          } else if (marketCondition.trend === 'down') {
+            primaryPatternType = Math.random() > 0.2 ? 'bearish' : (Math.random() > 0.5 ? 'bullish' : 'neutral');
+          } else {
+            // En mercado lateral, equilibrio
+            const rand = Math.random();
+            primaryPatternType = rand > 0.6 ? 'bullish' : rand > 0.3 ? 'bearish' : 'neutral';
+          }
+      }
+    }
+    
+    // Generar patrones coherentes con la tendencia y el perfil de riesgo
+    const patterns: TradingPattern[] = [];
+    
+    // Siempre añadir al menos un patrón del tipo primario, utilizando la información de mercado
+    patterns.push(
+      generateTradingStrategy(
+        symbol, 
+        primaryPatternType, 
+        price,
+        marketCondition
+      )
+    );
+    
+    // Posibilidad de añadir un segundo patrón complementario
+    if (Math.random() > 0.4) {
+      let secondaryType: 'bullish' | 'bearish' | 'neutral';
+      
+      // En perfil conservador, el segundo patrón suele ser neutral o confirmar el primario
+      if (riskProfile === 'conservative') {
+        secondaryType = Math.random() > 0.7 ? 'neutral' : primaryPatternType;
+      } 
+      // En perfil agresivo, el segundo patrón puede ser complementario o contrario
+      else if (riskProfile === 'aggressive') {
+        const oppositeType = primaryPatternType === 'bullish' ? 'bearish' : 
+                         primaryPatternType === 'bearish' ? 'bullish' : 
+                         Math.random() > 0.5 ? 'bullish' : 'bearish';
+        
+        secondaryType = Math.random() > 0.6 ? oppositeType : 'neutral';
+      }
+      // En perfil moderado, equilibrado
+      else {
+        const options: ('bullish' | 'bearish' | 'neutral')[] = ['bullish', 'bearish', 'neutral'];
+        // Evitar repetir exactamente el mismo tipo
+        const filteredOptions = options.filter(t => t !== primaryPatternType);
+        secondaryType = filteredOptions[Math.floor(Math.random() * filteredOptions.length)];
+      }
+      
+      // Generar patrón secundario con la misma información de mercado para coherencia
+      patterns.push(
+        generateTradingStrategy(
+          symbol, 
+          secondaryType, 
+          price,
+          marketCondition
+        )
+      );
+    }
+    
+    // En perfil agresivo, mayor probabilidad de tercer patrón
+    const thirdPatternProb = riskProfile === 'aggressive' ? 0.3 : 0.2;
+    
+    // Posibilidad de añadir un tercer patrón (menor probabilidad)
+    if (Math.random() > (1 - thirdPatternProb)) {
+      // El tercer patrón generalmente ofrece contexto adicional o alternativo
+      const tertiaryOptions: ('bullish' | 'bearish' | 'neutral')[] = ['bullish', 'bearish', 'neutral'];
+      // Filtrar para no duplicar el patrón primario
+      const filteredOptions = tertiaryOptions.filter(t => t !== primaryPatternType);
+      const tertiaryType = filteredOptions[Math.floor(Math.random() * filteredOptions.length)];
+      
+      patterns.push(
+        generateTradingStrategy(
+          symbol, 
+          tertiaryType, 
+          price,
+          marketCondition
+        )
+      );
+    }
+    
+    return patterns;
+  }, [selectedSignal, activeSymbol, riskProfile, signals]);
+  
+  // Usar patrones reales o los de ejemplo
+  const displayTradingPatterns = useMemo(() => {
+    // Si hay patrones generados para la señal seleccionada, usarlos
+    if (selectedSignal?.advancedPatterns && selectedSignal.advancedPatterns.length > 0) {
+      return selectedSignal.advancedPatterns;
+    }
+    
+    // Si no hay patrones reales pero tenemos patrones de ejemplo, usarlos
+    if (defaultTradingPatterns.length > 0) {
+      return defaultTradingPatterns;
+    }
+    
+    // Caso improbable: no hay patrones de ningún tipo
+    return [];
+  }, [selectedSignal, defaultTradingPatterns]);
+
   return (
     <Grid
       templateColumns={{ base: '1fr', lg: 'repeat(3, 1fr)' }}
@@ -251,18 +1180,11 @@ export const DashboardPage = () => {
           </Box>
           
           <HStack spacing={4}>
-            <Select 
-              value={activeSymbol} 
-              onChange={handleSymbolChange} 
-              width="auto" 
-              size="sm"
-              bg={bgColor}
-              borderColor={borderColor}
-            >
-              {availableSymbols.map(symbol => (
-                <option key={symbol} value={symbol}>{symbol}</option>
-              ))}
-            </Select>
+            <SymbolSelector 
+              symbols={availableSymbols}
+              activeSymbol={activeSymbol}
+              onChange={handleSymbolChange}
+            />
             
             <Button 
               leftIcon={<BellIcon />} 
@@ -306,13 +1228,12 @@ export const DashboardPage = () => {
           {/* Estrategias de trading */}
           <Box>
             <Skeleton isLoaded={!loading} height={loading ? "200px" : "auto"}>
-              {selectedSignal && selectedSignal.advancedPatterns && (
+              {displayTradingPatterns.length > 0 ? (
                 <TradingStrategiesCard 
-                  patterns={selectedSignal.advancedPatterns} 
-                  symbol={selectedSignal.symbol} 
+                  patterns={displayTradingPatterns} 
+                  symbol={selectedSignal?.symbol || activeSymbol} 
                 />
-              )}
-              {(!selectedSignal || !selectedSignal.advancedPatterns || selectedSignal.advancedPatterns.length === 0) && (
+              ) : (
                 <Box 
                   p={6} 
                   bg={bgColor} 
@@ -324,8 +1245,8 @@ export const DashboardPage = () => {
                   <VStack spacing={4} align="stretch">
                     <Heading size="md" color="white">Estrategias de Trading</Heading>
                     <Text color="gray.400">
-                      No se han detectado patrones avanzados para {activeSymbol} en este momento.
-                      Selecciona otro activo o actualiza para ver nuevas estrategias.
+                      Cargando estrategias para {activeSymbol}...
+                      Por favor, espera un momento o selecciona otro activo.
                     </Text>
                   </VStack>
                 </Box>
@@ -347,37 +1268,55 @@ export const DashboardPage = () => {
             borderColor={borderColor}
             boxShadow="xl"
           >
-            <Skeleton isLoaded={!loading} height={loading ? "200px" : "auto"}>
+            <Skeleton isLoaded={!loading} height={loading ? "400px" : "auto"}>
               <VStack spacing={4} align="stretch">
                 <Flex justify="space-between" align="center">
                   <Heading size="md" color="white">Señales de Trading</Heading>
-                  <Button 
-                    as={RouterLink} 
-                    to="/alerts" 
-                    size="xs" 
-                    rightIcon={<ExternalLinkIcon />}
-                    variant="ghost"
-                  >
-                    Ver todas
-                  </Button>
+                  <HStack>
+                    <Select 
+                      size="sm" 
+                      width="auto" 
+                      value={riskProfile} 
+                      onChange={handleRiskProfileChange}
+                      bg="gray.700"
+                      borderColor="gray.600"
+                    >
+                      <option value="conservative">Conservador</option>
+                      <option value="moderate">Moderado</option>
+                      <option value="aggressive">Agresivo</option>
+                    </Select>
+                    <Button
+                      size="sm"
+                      leftIcon={<InfoOutlineIcon />}
+                      variant="ghost"
+                      colorScheme="blue"
+                      onClick={() => {
+                        toast({
+                          title: 'Perfil de Riesgo',
+                          description: `Conservador: menor riesgo, menor retorno.
+                                      Moderado: equilibrio riesgo/retorno.
+                                      Agresivo: mayor riesgo, mayor retorno potencial.`,
+                          status: 'info',
+                          duration: 7000,
+                          isClosable: true,
+                        });
+                      }}
+                    />
+                  </HStack>
                 </Flex>
-                
-                <Text color="gray.300" fontSize="sm" mb={4}>
-                  Últimas señales generadas por nuestro algoritmo
-                </Text>
-                
+
                 <Tabs variant="soft-rounded" colorScheme="blue" size="sm">
                   <TabList>
-                    <Tab>Compra</Tab>
-                    <Tab>Venta</Tab>
-                    <Tab>Destacadas</Tab>
+                    <Tab>Compra ({filteredBuySignals.length})</Tab>
+                    <Tab>Venta ({filteredSellSignals.length})</Tab>
+                    <Tab>Destacados</Tab>
                   </TabList>
                   
                   <TabPanels mt={4}>
                     <TabPanel p={0}>
                       <VStack spacing={2} align="stretch" maxH="300px" overflowY="auto">
-                        {signals?.buySignals && signals.buySignals.length > 0 ? (
-                          signals.buySignals.map((signal: TradingSignal) => (
+                        {displayBuySignals && displayBuySignals.length > 0 ? (
+                          displayBuySignals.map((signal: TradingSignal) => (
                             <Flex 
                               key={signal.symbol} 
                               p={3} 
@@ -396,7 +1335,7 @@ export const DashboardPage = () => {
                               <HStack>
                                 <Text fontSize="sm" color="gray.300">${signal.price.toFixed(2)}</Text>
                                 <Badge 
-                                  colorScheme={signal.confidence > 0.7 ? "green" : "yellow"}
+                                  colorScheme={signal.confidence > 0.8 ? "green" : "yellow"}
                                   variant="outline"
                                 >
                                   {Math.round(signal.confidence * 100)}%
@@ -414,8 +1353,8 @@ export const DashboardPage = () => {
                     
                     <TabPanel p={0}>
                       <VStack spacing={2} align="stretch" maxH="300px" overflowY="auto">
-                        {signals?.sellSignals && signals.sellSignals.length > 0 ? (
-                          signals.sellSignals.map((signal: TradingSignal) => (
+                        {displaySellSignals && displaySellSignals.length > 0 ? (
+                          displaySellSignals.map((signal: TradingSignal) => (
                             <Flex 
                               key={signal.symbol} 
                               p={3} 
@@ -541,44 +1480,63 @@ export const DashboardPage = () => {
               </Flex>
               
               <Box maxH="300px" overflowY="auto">
-                <SimpleGrid columns={1} spacing={3}>
-                  {/* Aquí mostraremos un resumen de las alertas activas del usuario */}
-                  <Box p={4} bg="gray.700" borderRadius="md">
-                    <HStack justify="space-between">
-                      <HStack>
-                        <Badge colorScheme="green">Activa</Badge>
-                        <Text fontWeight="bold">BTC/USDT</Text>
-                      </HStack>
-                      <Badge colorScheme="blue">Compra</Badge>
-                    </HStack>
-                    <Text fontSize="sm" color="gray.300" mt={1}>
-                      Alerta cuando confianza &gt; 75%
-                    </Text>
-                  </Box>
-                  
-                  <Box p={4} bg="gray.700" borderRadius="md">
-                    <HStack justify="space-between">
-                      <HStack>
-                        <Badge colorScheme="green">Activa</Badge>
-                        <Text fontWeight="bold">ETH/USDT</Text>
-                      </HStack>
-                      <Badge colorScheme="red">Venta</Badge>
-                    </HStack>
-                    <Text fontSize="sm" color="gray.300" mt={1}>
-                      Alerta cuando precio &gt; $2,200
-                    </Text>
-                  </Box>
-                  
-                  <Button 
-                    as={RouterLink} 
-                    to="/alerts" 
-                    variant="outline" 
-                    size="sm" 
-                    width="100%"
-                  >
-                    Ver todas las alertas
-                  </Button>
-                </SimpleGrid>
+                {userAlerts.length > 0 ? (
+                  <SimpleGrid columns={1} spacing={3}>
+                    {/* Mostrar solo alertas activas */}
+                    {userAlerts
+                      .filter(alert => alert.enabled)
+                      .slice(0, 3) // Mostrar máximo 3 alertas en el dashboard
+                      .map(alert => (
+                        <Box key={alert.id} p={4} bg="gray.700" borderRadius="md">
+                          <HStack justify="space-between">
+                            <HStack>
+                              <Badge colorScheme="green">Activa</Badge>
+                              <Text fontWeight="bold">{alert.symbol}</Text>
+                            </HStack>
+                            <Badge colorScheme={alert.signalType === 'buy' ? 'blue' : alert.signalType === 'sell' ? 'red' : 'purple'}>
+                              {alert.signalType === 'buy' ? 'Compra' : alert.signalType === 'sell' ? 'Venta' : 'Ambos'}
+                            </Badge>
+                          </HStack>
+                          <Text fontSize="sm" color="gray.300" mt={1}>
+                            {alert.priceTarget && alert.priceTargetType 
+                              ? `Alerta cuando precio ${alert.priceTargetType === 'above' ? '>' : '<'} $${alert.priceTarget.toLocaleString()}`
+                              : `Alerta cuando confianza > ${alert.confidenceThreshold ? (alert.confidenceThreshold * 100).toFixed(0) : '70'}%`
+                            }
+                          </Text>
+                        </Box>
+                      ))
+                    }
+                    
+                    {userAlerts.length > 3 && (
+                      <Text fontSize="sm" color="gray.400" textAlign="center">
+                        + {userAlerts.length - 3} alertas más
+                      </Text>
+                    )}
+                    
+                    <Button 
+                      as={RouterLink} 
+                      to="/alerts" 
+                      variant="outline" 
+                      size="sm" 
+                      width="100%"
+                    >
+                      Ver todas las alertas
+                    </Button>
+                  </SimpleGrid>
+                ) : (
+                  <VStack spacing={4} py={6} align="center">
+                    <Text color="gray.400">No has creado ninguna alerta todavía</Text>
+                    <Button 
+                      as={RouterLink}
+                      to="/alerts"
+                      leftIcon={<AddIcon />}
+                      colorScheme="blue"
+                      size="sm"
+                    >
+                      Crear primera alerta
+                    </Button>
+                  </VStack>
+                )}
               </Box>
             </VStack>
           </Box>
@@ -645,118 +1603,11 @@ export const DashboardPage = () => {
       </GridItem>
 
       {/* Modal de detalles de señal */}
-      <Modal isOpen={isOpen} onClose={onClose} size="xl">
-        <ModalOverlay />
-        <ModalContent bg={bgColor} color="white">
-          <ModalHeader>
-            Detalles de Señal: {selectedSignal?.symbol}
-            <Badge 
-              ml={2} 
-              colorScheme={selectedSignal?.signal === 'buy' ? 'green' : 'red'}
-            >
-              {selectedSignal?.signal === 'buy' ? 'Compra' : 'Venta'}
-            </Badge>
-          </ModalHeader>
-          <ModalCloseButton />
-          <ModalBody pb={6}>
-            {selectedSignal && (
-              <VStack spacing={4} align="stretch">
-                <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
-                  <Stat>
-                    <StatLabel>Precio</StatLabel>
-                    <StatNumber>${selectedSignal.price.toFixed(2)}</StatNumber>
-                    <StatHelpText>
-                      <StatArrow 
-                        type={selectedSignal.priceChange24h >= 0 ? 'increase' : 'decrease'} 
-                      />
-                      {Math.abs(selectedSignal.priceChange24h).toFixed(2)}% (24h)
-                    </StatHelpText>
-                  </Stat>
-                  
-                  <Stat>
-                    <StatLabel>Confianza</StatLabel>
-                    <StatNumber>
-                      {(selectedSignal.confidence * 100).toFixed(1)}%
-                    </StatNumber>
-                    <StatHelpText>
-                      <Badge 
-                        colorScheme={selectedSignal.confidence > 0.7 ? 'green' : 'yellow'}
-                      >
-                        {selectedSignal.confidence > 0.7 ? 'Alta' : 'Media'}
-                      </Badge>
-                    </StatHelpText>
-                  </Stat>
-                </SimpleGrid>
-                
-                <Box>
-                  <Text fontWeight="bold" mb={2}>Razones:</Text>
-                  <VStack align="start" spacing={1}>
-                    {selectedSignal.reasons.map((reason, index) => (
-                      <Text key={index} fontSize="sm">• {reason}</Text>
-                    ))}
-                  </VStack>
-                </Box>
-                
-                <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
-                  <Box>
-                    <Text fontWeight="bold" mb={2}>Análisis Técnico:</Text>
-                    <SimpleGrid columns={2} spacing={2}>
-                      <Text fontSize="sm">RSI:</Text>
-                      <Text fontSize="sm">
-                        {selectedSignal.technicalAnalysis.indicators.rsi.toFixed(2)}
-                      </Text>
-                      
-                      <Text fontSize="sm">MACD:</Text>
-                      <Text fontSize="sm">
-                        {selectedSignal.technicalAnalysis.indicators.macd.histogram.toFixed(4)}
-                      </Text>
-                      
-                      <Text fontSize="sm">BB Superior:</Text>
-                      <Text fontSize="sm">
-                        {selectedSignal.technicalAnalysis.indicators.bollingerBands.upper.toFixed(2)}
-                      </Text>
-                      
-                      <Text fontSize="sm">BB Inferior:</Text>
-                      <Text fontSize="sm">
-                        {selectedSignal.technicalAnalysis.indicators.bollingerBands.lower.toFixed(2)}
-                      </Text>
-                    </SimpleGrid>
-                  </Box>
-                  
-                  <Box>
-                    <Text fontWeight="bold" mb={2}>Sentimiento:</Text>
-                    <Badge colorScheme={
-                      selectedSignal.marketSentiment.overallSentiment === 'positive' ? 'green' :
-                      selectedSignal.marketSentiment.overallSentiment === 'negative' ? 'red' : 'gray'
-                    }>
-                      {selectedSignal.marketSentiment.overallSentiment === 'positive' ? 'Positivo' :
-                       selectedSignal.marketSentiment.overallSentiment === 'negative' ? 'Negativo' : 'Neutral'}
-                    </Badge>
-                    
-                    {selectedSignal.marketSentiment.relevantNews.length > 0 && (
-                      <Box mt={2}>
-                        <Text fontSize="sm" fontWeight="bold">Noticias Relevantes:</Text>
-                        <Text fontSize="sm">{selectedSignal.marketSentiment.relevantNews[0].headline}</Text>
-                      </Box>
-                    )}
-                  </Box>
-                </SimpleGrid>
-                
-                <Button 
-                  as={RouterLink} 
-                  to="/alerts" 
-                  colorScheme="blue" 
-                  leftIcon={<BellIcon />}
-                  size="sm"
-                  width="100%"
-                >
-                  Crear alerta para {selectedSignal.symbol}
-                </Button>
-              </VStack>
-            )}
-          </ModalBody>
-        </ModalContent>
-      </Modal>
+      <SignalDetailsModal 
+        isOpen={isDetailsOpen} 
+        onClose={onDetailsClose} 
+        signal={selectedSignal}
+      />
     </Grid>
   );
 }; 

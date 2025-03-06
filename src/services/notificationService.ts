@@ -29,19 +29,112 @@ export interface UserAlert extends AlertConfig {
   triggerCount: number;
 }
 
-// En una aplicación real, esto estaría en una base de datos 
-// En producción, se utilizaría Firestore, MongoDB, PostgreSQL u otra base de datos
-const userAlerts: Map<string, UserAlert[]> = new Map();
+// Clave para almacenamiento en localStorage
+const ALERTS_STORAGE_KEY = 'trading_user_alerts';
+const USER_TOKENS_STORAGE_KEY = 'trading_user_tokens';
+const USER_EMAILS_STORAGE_KEY = 'trading_user_emails';
 
 // En producción, esta información también estaría en la base de datos
+// Para la aplicación de demostración, usamos almacenamiento local
 const userTokens: Map<string, string> = new Map(); // userId -> token de notificación
 const userEmails: Map<string, string> = new Map(); // userId -> dirección de correo
+
+/**
+ * Guardar una alerta en localStorage
+ */
+export const persistAlertsToStorage = (alerts: UserAlert[]): void => {
+  try {
+    localStorage.setItem(ALERTS_STORAGE_KEY, JSON.stringify(alerts));
+  } catch (error) {
+    console.error('Error guardando alertas en localStorage:', error);
+  }
+};
+
+/**
+ * Guardar token de notificación push en localStorage
+ */
+export const saveUserToken = (userId: string, token: string): void => {
+  userTokens.set(userId, token);
+  try {
+    const tokens = JSON.parse(localStorage.getItem(USER_TOKENS_STORAGE_KEY) || '{}');
+    tokens[userId] = token;
+    localStorage.setItem(USER_TOKENS_STORAGE_KEY, JSON.stringify(tokens));
+  } catch (error) {
+    console.error('Error guardando token en localStorage:', error);
+  }
+};
+
+/**
+ * Guardar email de usuario en localStorage
+ */
+export const saveUserEmail = (userId: string, email: string): void => {
+  userEmails.set(userId, email);
+  try {
+    const emails = JSON.parse(localStorage.getItem(USER_EMAILS_STORAGE_KEY) || '{}');
+    emails[userId] = email;
+    localStorage.setItem(USER_EMAILS_STORAGE_KEY, JSON.stringify(emails));
+  } catch (error) {
+    console.error('Error guardando email en localStorage:', error);
+  }
+};
+
+/**
+ * Cargar información de usuario desde localStorage
+ */
+export const loadUserInfo = (): void => {
+  try {
+    // Cargar tokens
+    const tokensString = localStorage.getItem(USER_TOKENS_STORAGE_KEY);
+    if (tokensString) {
+      const tokens = JSON.parse(tokensString);
+      Object.entries(tokens).forEach(([userId, token]) => {
+        userTokens.set(userId, token as string);
+      });
+    }
+    
+    // Cargar emails
+    const emailsString = localStorage.getItem(USER_EMAILS_STORAGE_KEY);
+    if (emailsString) {
+      const emails = JSON.parse(emailsString);
+      Object.entries(emails).forEach(([userId, email]) => {
+        userEmails.set(userId, email as string);
+      });
+    }
+  } catch (error) {
+    console.error('Error cargando información de usuario desde localStorage:', error);
+  }
+};
+
+// Cargar la información de usuario al inicializar
+loadUserInfo();
+
+/**
+ * Cargar alertas desde localStorage
+ */
+export const loadAlertsFromStorage = (): UserAlert[] => {
+  try {
+    const savedAlerts = localStorage.getItem(ALERTS_STORAGE_KEY);
+    if (savedAlerts) {
+      return JSON.parse(savedAlerts, (key, value) => {
+        // Convertir fechas guardadas como strings a objetos Date
+        if (key === 'createdAt' || key === 'lastTriggered') {
+          return value ? new Date(value).getTime() : null;
+        }
+        return value;
+      });
+    }
+  } catch (error) {
+    console.error('Error cargando alertas desde localStorage:', error);
+  }
+  return [];
+};
 
 /**
  * Guardar una nueva configuración de alerta para un usuario
  */
 export const saveAlert = (userId: string, alertConfig: Omit<AlertConfig, 'id' | 'createdAt' | 'userId'>): UserAlert => {
-  const userAlertsList = userAlerts.get(userId) || [];
+  // Obtener las alertas actuales desde localStorage
+  const userAlertsList = loadAlertsFromStorage();
   
   const newAlert: UserAlert = {
     ...alertConfig,
@@ -49,11 +142,14 @@ export const saveAlert = (userId: string, alertConfig: Omit<AlertConfig, 'id' | 
     id: `alert_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
     createdAt: Date.now(),
     triggerCount: 0,
-    enabled: true
+    enabled: alertConfig.enabled ?? true
   };
   
+  // Añadir la nueva alerta a la lista
   userAlertsList.push(newAlert);
-  userAlerts.set(userId, userAlertsList);
+  
+  // Guardar la lista actualizada
+  persistAlertsToStorage(userAlertsList);
   
   return newAlert;
 };
@@ -62,20 +158,21 @@ export const saveAlert = (userId: string, alertConfig: Omit<AlertConfig, 'id' | 
  * Obtener todas las alertas de un usuario
  */
 export const getUserAlerts = (userId: string): UserAlert[] => {
-  return userAlerts.get(userId) || [];
+  const allAlerts = loadAlertsFromStorage();
+  return allAlerts.filter(alert => alert.userId === userId);
 };
 
 /**
  * Eliminar una alerta de un usuario
  */
 export const deleteAlert = (userId: string, alertId: string): boolean => {
-  const userAlertsList = userAlerts.get(userId) || [];
-  const initialLength = userAlertsList.length;
+  const allAlerts = loadAlertsFromStorage();
+  const initialLength = allAlerts.length;
   
-  const filteredAlerts = userAlertsList.filter(alert => alert.id !== alertId);
+  const filteredAlerts = allAlerts.filter(alert => !(alert.userId === userId && alert.id === alertId));
   
   if (filteredAlerts.length !== initialLength) {
-    userAlerts.set(userId, filteredAlerts);
+    persistAlertsToStorage(filteredAlerts);
     return true;
   }
   
@@ -86,20 +183,20 @@ export const deleteAlert = (userId: string, alertId: string): boolean => {
  * Actualizar una alerta existente
  */
 export const updateAlert = (userId: string, alertId: string, updates: Partial<AlertConfig>): UserAlert | null => {
-  const userAlertsList = userAlerts.get(userId) || [];
-  const alertIndex = userAlertsList.findIndex(alert => alert.id === alertId);
+  const allAlerts = loadAlertsFromStorage();
+  const alertIndex = allAlerts.findIndex(alert => alert.userId === userId && alert.id === alertId);
   
   if (alertIndex === -1) {
     return null;
   }
   
   const updatedAlert = {
-    ...userAlertsList[alertIndex],
+    ...allAlerts[alertIndex],
     ...updates,
   };
   
-  userAlertsList[alertIndex] = updatedAlert;
-  userAlerts.set(userId, userAlertsList);
+  allAlerts[alertIndex] = updatedAlert;
+  persistAlertsToStorage(allAlerts);
   
   return updatedAlert;
 };
@@ -109,7 +206,7 @@ export const updateAlert = (userId: string, alertId: string, updates: Partial<Al
  */
 export const processSignalAlerts = (signal: TradingSignal, userId: string): UserAlert[] => {
   const triggeredAlerts: UserAlert[] = [];
-  const userAlertsList = userAlerts.get(userId) || [];
+  const userAlertsList = getUserAlerts(userId);
   
   for (const alert of userAlertsList) {
     if (!alert.enabled) continue;
@@ -158,7 +255,7 @@ export const processSignalAlerts = (signal: TradingSignal, userId: string): User
   
   // Guardamos las alertas actualizadas
   if (triggeredAlerts.length > 0) {
-    userAlerts.set(userId, userAlertsList);
+    persistAlertsToStorage(userAlertsList);
   }
   
   return triggeredAlerts;

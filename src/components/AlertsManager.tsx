@@ -38,70 +38,10 @@ import {
 } from '@chakra-ui/react';
 import { AddIcon, DeleteIcon, BellIcon, CheckIcon, CloseIcon, InfoOutlineIcon } from '@chakra-ui/icons';
 import { getActiveTradingPairs } from '../services/api';
-import { registerForPushNotifications } from '../services/notificationService';
+import { registerForPushNotifications, saveAlert, getUserAlerts, deleteAlert, updateAlert, saveUserEmail, UserAlert } from '../services/notificationService';
 import { SignalType, ConfidenceLevel } from '../services/tradingSignals';
 
-// Tipos para las alertas
-interface Alert {
-  id: string;
-  symbol: string;
-  type: SignalType;
-  active: boolean;
-  confidenceThreshold: ConfidenceLevel;
-  priceTarget?: number;
-  priceCondition?: 'above' | 'below';
-  notificationType: 'push' | 'email' | 'both';
-  createdAt: Date;
-  lastTriggered?: Date;
-}
-
-// Datos de ejemplo de alertas
-const sampleAlerts: Alert[] = [
-  {
-    id: '1',
-    symbol: 'BTC/USDT',
-    type: SignalType.BUY,
-    active: true,
-    confidenceThreshold: ConfidenceLevel.HIGH,
-    notificationType: 'push',
-    createdAt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
-    lastTriggered: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000),
-  },
-  {
-    id: '2',
-    symbol: 'ETH/USDT',
-    type: SignalType.BUY,
-    active: false,
-    confidenceThreshold: ConfidenceLevel.MEDIUM,
-    priceTarget: 2800,
-    priceCondition: 'below',
-    notificationType: 'both',
-    createdAt: new Date(Date.now() - 14 * 24 * 60 * 60 * 1000),
-  },
-  {
-    id: '3',
-    symbol: 'SOL/USDT',
-    type: SignalType.SELL,
-    active: true,
-    confidenceThreshold: ConfidenceLevel.VERY_HIGH,
-    priceTarget: 140,
-    priceCondition: 'above',
-    notificationType: 'email',
-    createdAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000),
-    lastTriggered: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000),
-  },
-  {
-    id: '4',
-    symbol: 'ADA/USDT',
-    type: SignalType.BUY,
-    active: true,
-    confidenceThreshold: ConfidenceLevel.HIGH,
-    notificationType: 'push',
-    createdAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000),
-  },
-];
-
-// ID de usuario simulado
+// ID de usuario simulado - en una aplicación real, vendría del sistema de autenticación
 const MOCK_USER_ID = 'user123';
 
 // Componente de gestor de alertas
@@ -114,19 +54,21 @@ export const AlertsManager: React.FC = () => {
     onClose: onDeleteClose,
   } = useDisclosure();
   
-  const [alerts, setAlerts] = useState<Alert[]>(sampleAlerts);
+  // Estado para las alertas
+  const [alerts, setAlerts] = useState<UserAlert[]>([]);
   const [tradingPairs, setTradingPairs] = useState<string[]>([]);
   const [isCreatingAlert, setIsCreatingAlert] = useState(false);
-  const [newAlert, setNewAlert] = useState<Partial<Alert>>({
+  const [newAlert, setNewAlert] = useState<Partial<UserAlert>>({
     symbol: '',
-    type: SignalType.BUY,
-    active: true,
-    confidenceThreshold: ConfidenceLevel.MEDIUM,
+    signalType: 'buy',
+    enabled: true,
+    confidenceThreshold: 0.7,
     notificationType: 'push',
   });
   const [loading, setLoading] = useState(false);
   const [pushEnabled, setPushEnabled] = useState(false);
   const [isEditing, setIsEditing] = useState<string | null>(null);
+  const [userEmail, setUserEmail] = useState<string>('');
 
   const bgColor = useColorModeValue('white', 'gray.800');
   const borderColor = useColorModeValue('gray.200', 'gray.700');
@@ -135,9 +77,15 @@ export const AlertsManager: React.FC = () => {
   useEffect(() => {
     const fetchData = async () => {
       try {
+        setLoading(true);
+        
         // Obtener pares de trading disponibles
         const pairs = await getActiveTradingPairs();
         setTradingPairs(pairs);
+        
+        // Obtener alertas del usuario
+        const userAlerts = getUserAlerts(MOCK_USER_ID);
+        setAlerts(userAlerts);
         
         // Comprobar si las notificaciones están habilitadas
         checkNotificationStatus();
@@ -149,6 +97,8 @@ export const AlertsManager: React.FC = () => {
           status: 'error',
           duration: 3000,
         });
+      } finally {
+        setLoading(false);
       }
     };
     
@@ -157,8 +107,8 @@ export const AlertsManager: React.FC = () => {
   
   // Comprobar si las notificaciones están habilitadas
   const checkNotificationStatus = () => {
-    // En una aplicación real, esto verificaría el estado de los permisos
-    // Aquí simulamos que no están habilitadas inicialmente
+    // En una aplicación real, verificaría el estado de los permisos
+    // y si el usuario tiene un token guardado
     setPushEnabled(false);
   };
   
@@ -167,7 +117,7 @@ export const AlertsManager: React.FC = () => {
     const { name, value } = e.target;
     setNewAlert(prev => ({
       ...prev,
-      [name]: value,
+      [name]: name === 'confidenceThreshold' ? parseFloat(value) : value,
     }));
   };
   
@@ -194,24 +144,26 @@ export const AlertsManager: React.FC = () => {
       return;
     }
 
-    // Crear nueva alerta
-    const alert: Alert = {
-      ...newAlert,
-      id: `alert_${Date.now()}`,
-      createdAt: new Date(),
-      // Asegurar que los campos requeridos estén presentes
+    // Convertir valores de la nueva alerta al formato correcto
+    const alertToSave: Omit<UserAlert, 'id' | 'createdAt' | 'userId' | 'triggerCount'> = {
       symbol: newAlert.symbol || '',
-      type: newAlert.type || SignalType.BUY,
-      active: newAlert.active !== undefined ? newAlert.active : true,
-      confidenceThreshold: newAlert.confidenceThreshold || ConfidenceLevel.MEDIUM,
+      signalType: newAlert.signalType || 'buy',
+      enabled: newAlert.enabled !== undefined ? newAlert.enabled : true,
+      confidenceThreshold: newAlert.confidenceThreshold || 0.7,
       notificationType: newAlert.notificationType || 'push',
+      priceTarget: newAlert.priceTarget,
+      priceTargetType: newAlert.priceTargetType as 'above' | 'below' | undefined,
     };
     
-    setAlerts(prev => [...prev, alert]);
+    // Guardar la alerta
+    const savedAlert = saveAlert(MOCK_USER_ID, alertToSave);
+    
+    // Actualizar el estado local
+    setAlerts(prev => [...prev, savedAlert]);
     
     toast({
       title: 'Alerta creada',
-      description: `Se ha creado una alerta para ${alert.symbol}`,
+      description: `Se ha creado una alerta para ${savedAlert.symbol}`,
       status: 'success',
       duration: 3000,
       isClosable: true,
@@ -220,9 +172,9 @@ export const AlertsManager: React.FC = () => {
     // Resetear el formulario
     setNewAlert({
       symbol: '',
-      type: SignalType.BUY,
-      active: true,
-      confidenceThreshold: ConfidenceLevel.MEDIUM,
+      signalType: 'buy',
+      enabled: true,
+      confidenceThreshold: 0.7,
       notificationType: 'push',
     });
     
@@ -231,34 +183,67 @@ export const AlertsManager: React.FC = () => {
   
   // Activar/desactivar alerta
   const toggleAlertStatus = (id: string) => {
-    setAlerts(prev => 
-      prev.map(alert => 
-        alert.id === id ? { ...alert, active: !alert.active } : alert
-      )
-    );
+    const alertToUpdate = alerts.find(alert => alert.id === id);
+    if (!alertToUpdate) return;
     
-    toast({
-      title: 'Estado actualizado',
-      description: 'Se ha actualizado el estado de la alerta',
-      status: 'success',
-      duration: 2000,
+    // Actualizar la alerta
+    const updatedAlert = updateAlert(MOCK_USER_ID, id, { 
+      enabled: !alertToUpdate.enabled 
     });
+    
+    if (updatedAlert) {
+      // Actualizar el estado local
+      setAlerts(prev => 
+        prev.map(alert => 
+          alert.id === id ? updatedAlert : alert
+        )
+      );
+      
+      toast({
+        title: 'Estado actualizado',
+        description: `La alerta para ${updatedAlert.symbol} está ahora ${updatedAlert.enabled ? 'activada' : 'desactivada'}`,
+        status: 'success',
+        duration: 2000,
+      });
+    }
   };
   
   // Eliminar alerta
-  const deleteAlert = () => {
+  const handleDeleteAlert = () => {
     if (!isEditing) return;
     
-    setAlerts(prev => prev.filter(alert => alert.id !== isEditing));
+    // Encontrar el símbolo de la alerta a eliminar para mostrar en la confirmación
+    const alertToDelete = alerts.find(alert => alert.id === isEditing);
+    if (!alertToDelete) {
+      onDeleteClose();
+      setIsEditing(null);
+      return;
+    }
     
-    toast({
-      title: 'Alerta eliminada',
-      description: `La alerta para ${isEditing} ha sido eliminada`,
-      status: 'info',
-      duration: 3000,
-    });
+    // Eliminar la alerta
+    const success = deleteAlert(MOCK_USER_ID, isEditing);
+    
+    if (success) {
+      // Actualizar el estado local
+      setAlerts(prev => prev.filter(alert => alert.id !== isEditing));
+      
+      toast({
+        title: 'Alerta eliminada',
+        description: `La alerta para ${alertToDelete.symbol} ha sido eliminada`,
+        status: 'info',
+        duration: 3000,
+      });
+    } else {
+      toast({
+        title: 'Error',
+        description: 'No se pudo eliminar la alerta',
+        status: 'error',
+        duration: 3000,
+      });
+    }
     
     onDeleteClose();
+    setIsEditing(null);
   };
   
   // Activar notificaciones
@@ -289,6 +274,28 @@ export const AlertsManager: React.FC = () => {
     } finally {
       setLoading(false);
     }
+  };
+  
+  // Guardar correo electrónico del usuario
+  const handleSaveEmail = () => {
+    if (!userEmail || !userEmail.includes('@')) {
+      toast({
+        title: 'Email inválido',
+        description: 'Por favor introduce un email válido',
+        status: 'error',
+        duration: 3000,
+      });
+      return;
+    }
+    
+    saveUserEmail(MOCK_USER_ID, userEmail);
+    
+    toast({
+      title: 'Email guardado',
+      description: 'Tu email ha sido guardado para recibir notificaciones',
+      status: 'success',
+      duration: 3000,
+    });
   };
   
   return (
@@ -348,23 +355,23 @@ export const AlertsManager: React.FC = () => {
                 <Flex justify="space-between" align="center" mb={2}>
                   <HStack spacing={3}>
                     <Badge
-                      colorScheme={alert.active ? 'green' : 'gray'}
+                      colorScheme={alert.enabled ? 'green' : 'gray'}
                       variant="solid"
                       fontSize="xs"
                       px={2}
                       py={1}
                       borderRadius="full"
                     >
-                      {alert.active ? 'Activa' : 'Inactiva'}
+                      {alert.enabled ? 'Activa' : 'Inactiva'}
                     </Badge>
                     <Heading size="sm">{alert.symbol}</Heading>
                   </HStack>
                   <HStack spacing={2}>
                     <IconButton
-                      aria-label={alert.active ? 'Desactivar alerta' : 'Activar alerta'}
-                      icon={alert.active ? <CloseIcon /> : <CheckIcon />}
+                      aria-label={alert.enabled ? 'Desactivar alerta' : 'Activar alerta'}
+                      icon={alert.enabled ? <CloseIcon /> : <CheckIcon />}
                       size="sm"
-                      colorScheme={alert.active ? 'red' : 'green'}
+                      colorScheme={alert.enabled ? 'red' : 'green'}
                       variant="ghost"
                       onClick={() => toggleAlertStatus(alert.id)}
                     />
@@ -384,18 +391,18 @@ export const AlertsManager: React.FC = () => {
                 
                 <SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
                   <HStack>
-                    <Badge colorScheme={alert.type === SignalType.BUY ? 'blue' : 'red'}>
-                      {alert.type === SignalType.BUY ? 'Compra' : 'Venta'}
+                    <Badge colorScheme={alert.signalType === 'buy' ? 'blue' : 'red'}>
+                      {alert.signalType === 'buy' ? 'Compra' : 'Venta'}
                     </Badge>
                     <Text fontSize="sm">
-                      Confianza &gt; {alert.confidenceThreshold}%
+                      Confianza &gt; {(alert.confidenceThreshold ? alert.confidenceThreshold * 100 : 0).toFixed(0)}%
                     </Text>
                   </HStack>
                   
-                  {alert.priceTarget && alert.priceCondition && (
+                  {alert.priceTarget && alert.priceTargetType && (
                     <HStack>
                       <Text fontSize="sm">
-                        Precio {alert.priceCondition === 'above' ? '>' : '<'} ${alert.priceTarget.toLocaleString()}
+                        Precio {alert.priceTargetType === 'above' ? '>' : '<'} ${alert.priceTarget.toLocaleString()}
                       </Text>
                     </HStack>
                   )}
@@ -447,23 +454,25 @@ export const AlertsManager: React.FC = () => {
               
               <FormControl>
                 <FormLabel>Tipo de Señal</FormLabel>
-                <Select name="type" value={newAlert.type} onChange={handleNewAlertChange}>
-                  <option value={SignalType.BUY}>Compra</option>
-                  <option value={SignalType.SELL}>Venta</option>
+                <Select name="signalType" value={newAlert.signalType} onChange={handleNewAlertChange}>
+                  <option value="buy">Compra</option>
+                  <option value="sell">Venta</option>
+                  <option value="both">Ambos</option>
                 </Select>
               </FormControl>
               
               <FormControl>
-                <FormLabel>Umbral de Confianza</FormLabel>
+                <FormLabel>Umbral de Confianza (%)</FormLabel>
                 <Input
                   name="confidenceThreshold"
                   type="number"
                   min={0}
-                  max={100}
+                  max={1}
+                  step={0.05}
                   value={newAlert.confidenceThreshold}
                   onChange={handleNewAlertChange}
                 />
-                <FormHelperText>Porcentaje mínimo de confianza (0-100)</FormHelperText>
+                <FormHelperText>Porcentaje mínimo de confianza (0-1)</FormHelperText>
               </FormControl>
               
               <HStack align="flex-start" spacing={4}>
@@ -483,8 +492,8 @@ export const AlertsManager: React.FC = () => {
                 <FormControl>
                   <FormLabel>Condición</FormLabel>
                   <Select
-                    name="priceCondition"
-                    value={newAlert.priceCondition || ''}
+                    name="priceTargetType"
+                    value={newAlert.priceTargetType || ''}
                     onChange={handleNewAlertChange}
                     placeholder="Seleccionar"
                     isDisabled={!newAlert.priceTarget}
@@ -502,16 +511,26 @@ export const AlertsManager: React.FC = () => {
                   <option value="email">Email</option>
                   <option value="both">Ambos</option>
                 </Select>
+                {(newAlert.notificationType === 'email' || newAlert.notificationType === 'both') && (
+                  <HStack mt={2}>
+                    <Input 
+                      placeholder="Tu email"
+                      value={userEmail}
+                      onChange={(e) => setUserEmail(e.target.value)}
+                    />
+                    <Button size="sm" onClick={handleSaveEmail}>Guardar</Button>
+                  </HStack>
+                )}
               </FormControl>
               
               <FormControl display="flex" alignItems="center">
-                <FormLabel htmlFor="active" mb="0">
+                <FormLabel htmlFor="enabled" mb="0">
                   Activar Alerta
                 </FormLabel>
                 <Switch
-                  id="active"
-                  name="active"
-                  isChecked={newAlert.active}
+                  id="enabled"
+                  name="enabled"
+                  isChecked={newAlert.enabled}
                   onChange={handleSwitchChange}
                   colorScheme="green"
                 />
@@ -537,14 +556,24 @@ export const AlertsManager: React.FC = () => {
           <ModalHeader>Confirmar Eliminación</ModalHeader>
           <ModalCloseButton />
           <ModalBody>
-            ¿Estás seguro de que quieres eliminar esta alerta para {isEditing}?
+            {isEditing ? (
+              <Text>
+                ¿Estás seguro de que quieres eliminar esta alerta?
+              </Text>
+            ) : (
+              <Text>Selecciona una alerta para eliminar</Text>
+            )}
           </ModalBody>
           
           <ModalFooter>
             <Button variant="ghost" mr={3} onClick={onDeleteClose}>
               Cancelar
             </Button>
-            <Button colorScheme="red" onClick={deleteAlert}>
+            <Button 
+              colorScheme="red" 
+              onClick={handleDeleteAlert} 
+              isDisabled={!isEditing}
+            >
               Eliminar
             </Button>
           </ModalFooter>
