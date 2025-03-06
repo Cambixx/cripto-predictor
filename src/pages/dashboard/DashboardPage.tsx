@@ -67,6 +67,7 @@ import {
 } from '../../services/tradingSignals'
 import { getActiveTradingPairs, getCoinData } from '../../services/api'
 import { registerForPushNotifications, getUserAlerts, UserAlert } from '../../services/notificationService'
+import { HotOpportunitiesPanel } from '../../components/HotOpportunitiesPanel'
 
 // ID de usuario simulado
 const MOCK_USER_ID = 'user123';
@@ -507,8 +508,13 @@ const SymbolSelector = ({
   };
   
   return (
-    <Box position="relative" width="200px">
-      <Menu isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} closeOnSelect={false}>
+    <Box position="relative" width={{ base: "100%", sm: "200px" }}>
+      <Menu 
+        isOpen={isMenuOpen} 
+        onClose={() => setIsMenuOpen(false)} 
+        closeOnSelect={false}
+        placement="bottom-end"
+      >
         <MenuButton
           as={Button}
           rightIcon={<ChevronDownIcon />}
@@ -518,6 +524,9 @@ const SymbolSelector = ({
           borderColor={borderColor}
           textAlign="left"
           fontSize="sm"
+          overflow="hidden"
+          textOverflow="ellipsis"
+          whiteSpace="nowrap"
         >
           {activeSymbol}
         </MenuButton>
@@ -525,11 +534,14 @@ const SymbolSelector = ({
         <Portal>
           <MenuList 
             maxH="300px" 
-            overflowY="auto" 
+            overflowY="auto"
             bg={bgColor}
             borderColor={borderColor}
-            minW="200px"
-            css={{
+            width={{ base: "calc(100vw - 32px)", sm: "200px" }}
+            maxWidth="300px"
+            position="relative"
+            zIndex={1000}
+            sx={{
               '&::-webkit-scrollbar': {
                 width: '4px',
               },
@@ -1161,126 +1173,447 @@ export const DashboardPage = () => {
   }, [selectedSignal, defaultTradingPatterns]);
 
   return (
-    <Grid
-      templateColumns={{ base: '1fr', md: 'repeat(2, 1fr)', lg: 'repeat(3, 1fr)' }}
-      templateRows={{ base: 'repeat(3, auto)', md: 'auto auto auto', lg: 'auto auto auto' }}
-      gap={{ base: 3, md: 4, lg: 6 }}
-      width="100%"
-      maxWidth="100%"
-      px={{ base: 2, md: 4, lg: 6 }}
-    >
-      {/* Header - Información general y controles */}
-      <GridItem colSpan={{ base: 1, md: 2, lg: 3 }}>
-        <Flex 
-          justify="space-between" 
-          align={{ base: "stretch", md: "center" }}
-          direction={{ base: "column", md: "row" }}
-          gap={4}
-          mb={4}
-        >
-          <Heading color="white" size="lg">Dashboard de Trading</Heading>
-          
-          <HStack wrap="wrap" spacing={4} justify={{ base: "space-between", md: "flex-end" }} width={{ base: "100%", md: "auto" }}>
-            <HStack>
-              <Text color="gray.400" fontSize="sm">Perfil de Riesgo:</Text>
-              <Select 
-                size="sm" 
-                width="140px"
-                value={riskProfile}
-                onChange={handleRiskProfileChange}
-              >
-                <option value="conservative">Conservador</option>
-                <option value="moderate">Moderado</option>
-                <option value="aggressive">Agresivo</option>
-              </Select>
-            </HStack>
-            
-            <Tooltip label="Recargar datos">
-              <Button 
-                size="sm"
-                colorScheme="blue"
-                isLoading={refreshing}
-                onClick={handleRefresh}
-                leftIcon={<RepeatIcon />}
-              >
-                Actualizar
-              </Button>
-            </Tooltip>
-          </HStack>
-        </Flex>
-      </GridItem>
-
-      {/* Panel izquierdo - Gráfico y estadísticas de mercado */}
-      <GridItem colSpan={{ base: 1, md: 2, lg: 2 }} rowSpan={{ base: 1, lg: 2 }}>
-        <VStack spacing={{ base: 3, md: 4, lg: 6 }} align="stretch">
-          {/* Gráfico principal */}
-          <Box 
-            p={{ base: 3, md: 4, lg: 6 }}
-            bg={bgColor} 
-            borderRadius="xl" 
-            borderWidth="1px" 
-            borderColor={borderColor}
-            boxShadow="xl"
-            overflow="hidden"
-          >
-            <VStack spacing={3} align="stretch">
-              <Flex 
-                justify="space-between" 
-                align="center" 
-                wrap="wrap"
-                gap={2}
-              >
-                <Heading size="md" color="white">
-                  {activeSymbol}
-                </Heading>
-                <SymbolSelector 
-                  symbols={availableSymbols} 
-                  activeSymbol={activeSymbol} 
-                  onChange={handleSymbolChange}
-                />
-              </Flex>
+    <Box>
+      <Grid
+        templateColumns={{ base: '1fr', lg: 'repeat(3, 1fr)' }}
+        templateRows={{ base: 'auto', lg: 'auto auto auto' }}
+        gap={4}
+        p={{ base: 2, md: 4 }}
+      >
+        {/* Header - Información general y controles */}
+        <GridItem colSpan={{ base: 1, lg: 3 }}>
+          <VStack spacing={4} align="stretch" width="100%">
+            <Flex 
+              direction={{ base: "column", md: "row" }}
+              justify="space-between"
+              align={{ base: "stretch", md: "center" }}
+              gap={4}
+              wrap="wrap"
+            >
+              <Heading size={{ base: "md", lg: "lg" }} color="white">Dashboard de Trading</Heading>
               
-              <Skeleton isLoaded={!loading} height={loading ? "400px" : "auto"} minH="300px">
-                <CryptoChart symbol={activeSymbol} />
-              </Skeleton>
-            </VStack>
-          </Box>
-          
-          {/* Estrategias de trading */}
-          <Box>
-            <Skeleton isLoaded={!loading} height={loading ? "200px" : "auto"}>
-              {displayTradingPatterns.length > 0 ? (
-                <TradingStrategiesCard 
-                  patterns={displayTradingPatterns} 
-                  symbol={selectedSignal?.symbol || activeSymbol} 
-                />
-              ) : (
-                <Box 
-                  p={{ base: 3, md: 4, lg: 6 }}
-                  bg={bgColor} 
-                  borderRadius="xl" 
-                  borderWidth="1px" 
-                  borderColor={borderColor}
-                  boxShadow="xl"
+              <Flex 
+                gap={3} 
+                direction={{ base: "column", sm: "row" }}
+                align={{ base: "stretch", sm: "center" }}
+                justify="flex-end"
+                width={{ base: "100%", md: "auto" }}
+              >
+                <HStack 
+                  spacing={2} 
+                  width={{ base: "100%", sm: "auto" }}
+                  justify={{ base: "space-between", sm: "flex-end" }}
                 >
-                  <VStack spacing={4} align="stretch">
-                    <Heading size="md" color="white">Estrategias de Trading</Heading>
-                    <Text color="gray.400">
-                      Cargando estrategias para {activeSymbol}...
-                      Por favor, espera un momento o selecciona otro activo.
-                    </Text>
-                  </VStack>
-                </Box>
-              )}
-            </Skeleton>
-          </Box>
-        </VStack>
-      </GridItem>
+                  <Text color="gray.400" fontSize="sm" whiteSpace="nowrap">Perfil de Riesgo:</Text>
+                  <Select 
+                    size="sm" 
+                    width={{ base: "auto", sm: "140px" }}
+                    value={riskProfile}
+                    onChange={handleRiskProfileChange}
+                  >
+                    <option value="conservative">Conservador</option>
+                    <option value="moderate">Moderado</option>
+                    <option value="aggressive">Agresivo</option>
+                  </Select>
+                </HStack>
+                
+                <Tooltip label="Recargar datos">
+                  <Button 
+                    size="sm"
+                    colorScheme="blue"
+                    isLoading={refreshing}
+                    onClick={handleRefresh}
+                    leftIcon={<RepeatIcon />}
+                    width={{ base: "100%", sm: "auto" }}
+                  >
+                    Actualizar
+                  </Button>
+                </Tooltip>
+              </Flex>
+            </Flex>
+          </VStack>
+        </GridItem>
 
-      {/* Panel derecho - Señales y alertas */}
-      <GridItem colSpan={{ base: 1, md: 1, lg: 1 }} rowSpan={{ base: 1, md: 2, lg: 2 }}>
-        <VStack spacing={{ base: 3, md: 4, lg: 6 }} align="stretch" height="100%">
-          {/* Resumen de señales */}
+        {/* Panel de Oportunidades en Tiempo Real */}
+        <GridItem colSpan={{ base: 1, lg: 3 }} rowSpan={1}>
+          <HotOpportunitiesPanel />
+        </GridItem>
+
+        {/* Panel izquierdo - Gráfico y estadísticas de mercado */}
+        <GridItem colSpan={{ base: 1, md: 2, lg: 2 }} rowSpan={{ base: 1, lg: 2 }}>
+          <VStack spacing={{ base: 3, md: 4, lg: 6 }} align="stretch">
+            {/* Gráfico principal */}
+            <Box 
+              p={{ base: 3, md: 4, lg: 6 }}
+              bg={bgColor} 
+              borderRadius="xl" 
+              borderWidth="1px" 
+              borderColor={borderColor}
+              boxShadow="xl"
+              overflow="hidden"
+            >
+              <VStack spacing={3} align="stretch">
+                <Flex 
+                  justify="space-between" 
+                  align="center" 
+                  wrap="wrap"
+                  gap={2}
+                >
+                  <Heading size="md" color="white">
+                    {activeSymbol}
+                  </Heading>
+                  <SymbolSelector 
+                    symbols={availableSymbols} 
+                    activeSymbol={activeSymbol} 
+                    onChange={handleSymbolChange}
+                  />
+                </Flex>
+                
+                <Skeleton isLoaded={!loading} height={loading ? "400px" : "auto"} minH="300px">
+                  <CryptoChart symbol={activeSymbol} />
+                </Skeleton>
+              </VStack>
+            </Box>
+            
+            {/* Estrategias de trading */}
+            <Box>
+              <Skeleton isLoaded={!loading} height={loading ? "200px" : "auto"}>
+                {displayTradingPatterns.length > 0 ? (
+                  <TradingStrategiesCard 
+                    patterns={displayTradingPatterns} 
+                    symbol={selectedSignal?.symbol || activeSymbol} 
+                  />
+                ) : (
+                  <Box 
+                    p={{ base: 3, md: 4, lg: 6 }}
+                    bg={bgColor} 
+                    borderRadius="xl" 
+                    borderWidth="1px" 
+                    borderColor={borderColor}
+                    boxShadow="xl"
+                  >
+                    <VStack spacing={4} align="stretch">
+                      <Heading size="md" color="white">Estrategias de Trading</Heading>
+                      <Text color="gray.400">
+                        Cargando estrategias para {activeSymbol}...
+                        Por favor, espera un momento o selecciona otro activo.
+                      </Text>
+                    </VStack>
+                  </Box>
+                )}
+              </Skeleton>
+            </Box>
+          </VStack>
+        </GridItem>
+
+        {/* Panel derecho - Señales y alertas */}
+        <GridItem colSpan={{ base: 1, md: 1, lg: 1 }} rowSpan={{ base: 1, md: 2, lg: 2 }}>
+          <VStack spacing={{ base: 3, md: 4, lg: 6 }} align="stretch" height="100%">
+            {/* Resumen de señales */}
+            <Box 
+              p={{ base: 2, md: 4, lg: 6 }}
+              bg={bgColor} 
+              borderRadius="xl" 
+              borderWidth="1px" 
+              borderColor={borderColor}
+              boxShadow="xl"
+              height="100%"
+              overflowX="hidden"
+            >
+              <Skeleton isLoaded={!loading} height={loading ? "400px" : "auto"}>
+                <VStack spacing={4} align="stretch">
+                  <Flex 
+                    justify="space-between" 
+                    align="center" 
+                    direction={{ base: "column", sm: "row" }}
+                    gap={2}
+                  >
+                    <Heading size="md" color="white">Señales</Heading>
+                    <HStack justify={{ base: "center", sm: "flex-end" }} width={{ base: "100%", sm: "auto" }}>
+                      <Button
+                        size="xs"
+                        variant="outline"
+                        colorScheme="blue"
+                        leftIcon={<SmallAddIcon />}
+                        onClick={() => {
+                          toast({
+                            title: "Próximamente",
+                            description: "La creación de señales personalizadas estará disponible próximamente",
+                            status: "info",
+                            duration: 7000,
+                            isClosable: true,
+                          });
+                        }}
+                      >
+                        Crear
+                      </Button>
+                    </HStack>
+                  </Flex>
+
+                  <Box overflowX="auto" pb={2}>
+                    <Tabs variant="soft-rounded" colorScheme="blue" size="sm" isLazy>
+                      <TabList 
+                        overflowX="auto" 
+                        width="100%" 
+                        flexWrap="nowrap"
+                        sx={{
+                          scrollbarWidth: 'none',
+                          '::-webkit-scrollbar': {
+                            display: 'none',
+                          },
+                          '& button': {
+                            minWidth: 'auto',
+                            px: 3,
+                            whiteSpace: 'nowrap',
+                          }
+                        }}
+                      >
+                        <Tab>Compra ({filteredBuySignals.length})</Tab>
+                        <Tab>Venta ({filteredSellSignals.length})</Tab>
+                        <Tab>Destacados</Tab>
+                      </TabList>
+                      
+                      <TabPanels mt={4}>
+                        <TabPanel p={0}>
+                          <VStack spacing={2} align="stretch" maxH={{ base: "250px", md: "300px" }} overflowY="auto">
+                            {displayBuySignals && displayBuySignals.length > 0 ? (
+                              displayBuySignals.map((signal: TradingSignal) => (
+                                <Flex 
+                                  key={signal.symbol} 
+                                  p={3} 
+                                  bg="gray.700" 
+                                  borderRadius="md" 
+                                  justify="space-between" 
+                                  align="center"
+                                  onClick={() => handleViewSignalDetails(signal)}
+                                  cursor="pointer"
+                                  _hover={{ bg: 'gray.600' }}
+                                >
+                                  <HStack>
+                                    <Badge colorScheme="green">Compra</Badge>
+                                    <Text fontWeight="bold">{signal.symbol}</Text>
+                                  </HStack>
+                                  <HStack>
+                                    <Text fontSize="sm" color="gray.300">${signal.price.toFixed(2)}</Text>
+                                    <Badge 
+                                      colorScheme={signal.confidence > 0.8 ? "green" : "yellow"}
+                                      variant="outline"
+                                    >
+                                      {Math.round(signal.confidence * 100)}%
+                                    </Badge>
+                                  </HStack>
+                                </Flex>
+                              ))
+                            ) : (
+                              <Text color="gray.400" fontSize="sm" p={2}>
+                                No hay señales de compra disponibles
+                              </Text>
+                            )}
+                          </VStack>
+                        </TabPanel>
+                        
+                        <TabPanel p={0}>
+                          <VStack spacing={2} align="stretch" maxH={{ base: "250px", md: "300px" }} overflowY="auto">
+                            {displaySellSignals && displaySellSignals.length > 0 ? (
+                              displaySellSignals.map((signal: TradingSignal) => (
+                                <Flex 
+                                  key={signal.symbol} 
+                                  p={3} 
+                                  bg="gray.700" 
+                                  borderRadius="md" 
+                                  justify="space-between" 
+                                  align="center"
+                                  onClick={() => handleViewSignalDetails(signal)}
+                                  cursor="pointer"
+                                  _hover={{ bg: 'gray.600' }}
+                                >
+                                  <HStack>
+                                    <Badge colorScheme="red">Venta</Badge>
+                                    <Text fontWeight="bold">{signal.symbol}</Text>
+                                  </HStack>
+                                  <HStack>
+                                    <Text fontSize="sm" color="gray.300">${signal.price.toFixed(2)}</Text>
+                                    <Badge 
+                                      colorScheme={signal.confidence > 0.7 ? "green" : "yellow"}
+                                      variant="outline"
+                                    >
+                                      {Math.round(signal.confidence * 100)}%
+                                    </Badge>
+                                  </HStack>
+                                </Flex>
+                              ))
+                            ) : (
+                              <Text color="gray.400" fontSize="sm" p={2}>
+                                No hay señales de venta disponibles
+                              </Text>
+                            )}
+                          </VStack>
+                        </TabPanel>
+                        
+                        <TabPanel p={0}>
+                          <VStack spacing={2} align="stretch" maxH={{ base: "250px", md: "300px" }} overflowY="auto">
+                            {dashboardSignals && dashboardSignals.length > 0 ? (
+                              dashboardSignals
+                                .filter(signal => signal.confidence === ConfidenceLevel.HIGH || signal.confidence === ConfidenceLevel.VERY_HIGH)
+                                .map((signal: DashboardSignal) => (
+                                  <Flex 
+                                    key={signal.id} 
+                                    p={3} 
+                                    bg="gray.700" 
+                                    borderRadius="md" 
+                                    justify="space-between" 
+                                    align="center"
+                                    cursor="pointer"
+                                    _hover={{ bg: 'gray.600' }}
+                                  >
+                                    <HStack>
+                                      <Badge 
+                                        colorScheme={
+                                          signal.type === SignalType.BUY || signal.type === SignalType.STRONG_BUY 
+                                            ? "green" 
+                                            : signal.type === SignalType.SELL || signal.type === SignalType.STRONG_SELL 
+                                              ? "red" 
+                                              : "gray"
+                                        }
+                                      >
+                                        {signal.type === SignalType.BUY ? "Compra" : 
+                                         signal.type === SignalType.STRONG_BUY ? "Compra Fuerte" :
+                                         signal.type === SignalType.SELL ? "Venta" :
+                                         signal.type === SignalType.STRONG_SELL ? "Venta Fuerte" : "Mantener"}
+                                      </Badge>
+                                      <Text fontWeight="bold">{signal.symbol}</Text>
+                                    </HStack>
+                                    <HStack>
+                                      <Text fontSize="sm" color="gray.300">${signal.price.toFixed(2)}</Text>
+                                      <Badge 
+                                        colorScheme={
+                                          signal.confidence === ConfidenceLevel.VERY_HIGH 
+                                            ? "purple" 
+                                            : signal.confidence === ConfidenceLevel.HIGH 
+                                              ? "green" 
+                                              : signal.confidence === ConfidenceLevel.MEDIUM 
+                                                ? "yellow" 
+                                                : "gray"
+                                        }
+                                          variant="outline"
+                                      >
+                                        {signal.confidence === ConfidenceLevel.VERY_HIGH ? "Muy Alta" :
+                                         signal.confidence === ConfidenceLevel.HIGH ? "Alta" :
+                                         signal.confidence === ConfidenceLevel.MEDIUM ? "Media" : "Baja"}
+                                      </Badge>
+                                    </HStack>
+                                  </Flex>
+                                ))
+                            ) : (
+                              <Text color="gray.400" fontSize="sm" p={2}>
+                                No hay señales destacadas disponibles
+                              </Text>
+                            )}
+                          </VStack>
+                        </TabPanel>
+                      </TabPanels>
+                    </Tabs>
+                  </Box>
+    </VStack>
+              </Skeleton>
+            </Box>
+            
+            {/* Resumen de alertas */}
+            <Box 
+              p={{ base: 2, md: 4, lg: 6 }}
+              bg={bgColor} 
+              borderRadius="xl" 
+              borderWidth="1px" 
+              borderColor={borderColor}
+              boxShadow="xl"
+              overflowX="hidden"
+            >
+              <VStack spacing={4} align="stretch">
+                <Flex 
+                  justify="space-between" 
+                  align="center"
+                  direction={{ base: "column", sm: "row" }}
+                  gap={2}
+                >
+                  <Heading size="md" color="white">Mis Alertas</Heading>
+                  <Button 
+                    as={RouterLink} 
+                    to="/alerts" 
+                    size="xs" 
+                    colorScheme="blue"
+                    leftIcon={<AddIcon />}
+                    width={{ base: "100%", sm: "auto" }}
+                  >
+                    Configurar
+                  </Button>
+                </Flex>
+                
+                <Box maxH="300px" overflowY="auto">
+                  {userAlerts.length > 0 ? (
+                    <SimpleGrid columns={1} spacing={3}>
+                      {/* Mostrar solo alertas activas */}
+                      {userAlerts
+                        .filter(alert => alert.enabled)
+                        .slice(0, 3) // Mostrar máximo 3 alertas en el dashboard
+                        .map(alert => (
+                          <Box key={alert.id} p={4} bg="gray.700" borderRadius="md">
+                            <HStack justify="space-between">
+                              <HStack>
+                                <Badge colorScheme="green">Activa</Badge>
+                                <Text fontWeight="bold">{alert.symbol}</Text>
+                              </HStack>
+                              <Badge colorScheme={alert.signalType === 'buy' ? 'blue' : alert.signalType === 'sell' ? 'red' : 'purple'}>
+                                {alert.signalType === 'buy' ? 'Compra' : alert.signalType === 'sell' ? 'Venta' : 'Ambos'}
+                              </Badge>
+                            </HStack>
+                            <Text fontSize="sm" color="gray.300" mt={1}>
+                              {alert.priceTarget && alert.priceTargetType 
+                                ? `Alerta cuando precio ${alert.priceTargetType === 'above' ? '>' : '<'} $${alert.priceTarget.toLocaleString()}`
+                                : `Alerta cuando confianza > ${alert.confidenceThreshold ? (alert.confidenceThreshold * 100).toFixed(0) : '70'}%`
+                              }
+                            </Text>
+                          </Box>
+                        ))
+                      }
+                      
+                      {userAlerts.length > 3 && (
+                        <Text fontSize="sm" color="gray.400" textAlign="center">
+                          + {userAlerts.length - 3} alertas más
+                        </Text>
+                      )}
+                      
+                      <Button 
+                        as={RouterLink} 
+                        to="/alerts" 
+                        variant="outline" 
+                        size="sm" 
+                        width="100%"
+                      >
+                        Ver todas las alertas
+                      </Button>
+                    </SimpleGrid>
+                  ) : (
+                    <VStack spacing={4} py={6} align="center">
+                      <Text color="gray.400">No has creado ninguna alerta todavía</Text>
+                      <Button 
+                        as={RouterLink}
+                        to="/alerts"
+                        leftIcon={<AddIcon />}
+                        colorScheme="blue"
+                        size="sm"
+                      >
+                        Crear primera alerta
+                      </Button>
+                    </VStack>
+                  )}
+                </Box>
+              </VStack>
+            </Box>
+          </VStack>
+        </GridItem>
+
+        {/* Panel inferior - Transacciones y estadísticas */}
+        <GridItem colSpan={{ base: 1, md: 2, lg: 3 }}>
           <Box 
             p={{ base: 3, md: 4, lg: 6 }}
             bg={bgColor} 
@@ -1288,341 +1621,63 @@ export const DashboardPage = () => {
             borderWidth="1px" 
             borderColor={borderColor}
             boxShadow="xl"
-            height="100%"
           >
-            <Skeleton isLoaded={!loading} height={loading ? "400px" : "auto"}>
+            <Skeleton isLoaded={!loading} height={loading ? "200px" : "auto"}>
               <VStack spacing={4} align="stretch">
-                <Flex justify="space-between" align="center">
-                  <Heading size="md" color="white">Señales</Heading>
-                  <HStack>
-                    <Button
-                      size="xs"
-                      variant="outline"
-                      colorScheme="blue"
-                      leftIcon={<SmallAddIcon />}
-                      onClick={() => {
-                        toast({
-                          title: "Próximamente",
-                          description: "La creación de señales personalizadas estará disponible próximamente",
-                          status: "info",
-                          duration: 7000,
-                          isClosable: true,
-                        });
-                      }}
-                    >
-                      Crear
-                    </Button>
-                  </HStack>
-                </Flex>
-
-                <Tabs variant="soft-rounded" colorScheme="blue" size="sm" isLazy>
-                  <TabList overflowX="auto" width="100%" flexWrap="nowrap" css={{
-                    scrollbarWidth: 'none',
-                    '&::-webkit-scrollbar': {
-                      display: 'none',
-                    },
-                  }}>
-                    <Tab minWidth="auto" whiteSpace="nowrap">Compra ({filteredBuySignals.length})</Tab>
-                    <Tab minWidth="auto" whiteSpace="nowrap">Venta ({filteredSellSignals.length})</Tab>
-                    <Tab minWidth="auto" whiteSpace="nowrap">Destacados</Tab>
-                  </TabList>
+                <Heading size="md" color="white">Resumen del Mercado</Heading>
+                <SimpleGrid columns={{ base: 1, sm: 2, md: 2, lg: 4 }} spacing={4}>
+                  <Stat>
+                    <StatLabel color="gray.400">Operaciones</StatLabel>
+                    <StatNumber color="white">24</StatNumber>
+                    <StatHelpText>
+                      <StatArrow type="increase" />
+                      12 ganancias / 12 pérdidas
+                    </StatHelpText>
+                  </Stat>
                   
-                  <TabPanels mt={4}>
-                    <TabPanel p={0}>
-                      <VStack spacing={2} align="stretch" maxH={{ base: "250px", md: "300px" }} overflowY="auto">
-                        {displayBuySignals && displayBuySignals.length > 0 ? (
-                          displayBuySignals.map((signal: TradingSignal) => (
-                            <Flex 
-                              key={signal.symbol} 
-                              p={3} 
-                              bg="gray.700" 
-                              borderRadius="md" 
-                              justify="space-between" 
-                              align="center"
-                              onClick={() => handleViewSignalDetails(signal)}
-                              cursor="pointer"
-                              _hover={{ bg: 'gray.600' }}
-                            >
-                              <HStack>
-                                <Badge colorScheme="green">Compra</Badge>
-                                <Text fontWeight="bold">{signal.symbol}</Text>
-                              </HStack>
-                              <HStack>
-                                <Text fontSize="sm" color="gray.300">${signal.price.toFixed(2)}</Text>
-                                <Badge 
-                                  colorScheme={signal.confidence > 0.8 ? "green" : "yellow"}
-                                  variant="outline"
-                                >
-                                  {Math.round(signal.confidence * 100)}%
-                                </Badge>
-                              </HStack>
-                            </Flex>
-                          ))
-                        ) : (
-                          <Text color="gray.400" fontSize="sm" p={2}>
-                            No hay señales de compra disponibles
-                          </Text>
-                        )}
-                      </VStack>
-                    </TabPanel>
-                    
-                    <TabPanel p={0}>
-                      <VStack spacing={2} align="stretch" maxH={{ base: "250px", md: "300px" }} overflowY="auto">
-                        {displaySellSignals && displaySellSignals.length > 0 ? (
-                          displaySellSignals.map((signal: TradingSignal) => (
-                            <Flex 
-                              key={signal.symbol} 
-                              p={3} 
-                              bg="gray.700" 
-                              borderRadius="md" 
-                              justify="space-between" 
-                              align="center"
-                              onClick={() => handleViewSignalDetails(signal)}
-                              cursor="pointer"
-                              _hover={{ bg: 'gray.600' }}
-                            >
-                              <HStack>
-                                <Badge colorScheme="red">Venta</Badge>
-                                <Text fontWeight="bold">{signal.symbol}</Text>
-                              </HStack>
-                              <HStack>
-                                <Text fontSize="sm" color="gray.300">${signal.price.toFixed(2)}</Text>
-                                <Badge 
-                                  colorScheme={signal.confidence > 0.7 ? "green" : "yellow"}
-                                  variant="outline"
-                                >
-                                  {Math.round(signal.confidence * 100)}%
-                                </Badge>
-                              </HStack>
-                            </Flex>
-                          ))
-                        ) : (
-                          <Text color="gray.400" fontSize="sm" p={2}>
-                            No hay señales de venta disponibles
-                          </Text>
-                        )}
-                      </VStack>
-                    </TabPanel>
-                    
-                    <TabPanel p={0}>
-                      <VStack spacing={2} align="stretch" maxH={{ base: "250px", md: "300px" }} overflowY="auto">
-                        {dashboardSignals && dashboardSignals.length > 0 ? (
-                          dashboardSignals
-                            .filter(signal => signal.confidence === ConfidenceLevel.HIGH || signal.confidence === ConfidenceLevel.VERY_HIGH)
-                            .map((signal: DashboardSignal) => (
-                              <Flex 
-                                key={signal.id} 
-                                p={3} 
-                                bg="gray.700" 
-                                borderRadius="md" 
-                                justify="space-between" 
-                                align="center"
-                                cursor="pointer"
-                                _hover={{ bg: 'gray.600' }}
-                              >
-                                <HStack>
-                                  <Badge 
-                                    colorScheme={
-                                      signal.type === SignalType.BUY || signal.type === SignalType.STRONG_BUY 
-                                        ? "green" 
-                                        : signal.type === SignalType.SELL || signal.type === SignalType.STRONG_SELL 
-                                          ? "red" 
-                                          : "gray"
-                                    }
-                                  >
-                                    {signal.type === SignalType.BUY ? "Compra" : 
-                                     signal.type === SignalType.STRONG_BUY ? "Compra Fuerte" :
-                                     signal.type === SignalType.SELL ? "Venta" :
-                                     signal.type === SignalType.STRONG_SELL ? "Venta Fuerte" : "Mantener"}
-                                  </Badge>
-                                  <Text fontWeight="bold">{signal.symbol}</Text>
-                                </HStack>
-                                <HStack>
-                                  <Text fontSize="sm" color="gray.300">${signal.price.toFixed(2)}</Text>
-                                  <Badge 
-                                    colorScheme={
-                                      signal.confidence === ConfidenceLevel.VERY_HIGH 
-                                        ? "purple" 
-                                        : signal.confidence === ConfidenceLevel.HIGH 
-                                          ? "green" 
-                                          : signal.confidence === ConfidenceLevel.MEDIUM 
-                                            ? "yellow" 
-                                            : "gray"
-                                    }
-                                    variant="outline"
-                                  >
-                                    {signal.confidence === ConfidenceLevel.VERY_HIGH ? "Muy Alta" :
-                                     signal.confidence === ConfidenceLevel.HIGH ? "Alta" :
-                                     signal.confidence === ConfidenceLevel.MEDIUM ? "Media" : "Baja"}
-                                  </Badge>
-                                </HStack>
-                              </Flex>
-                            ))
-                        ) : (
-                          <Text color="gray.400" fontSize="sm" p={2}>
-                            No hay señales destacadas disponibles
-                          </Text>
-                        )}
-                      </VStack>
-                    </TabPanel>
-                  </TabPanels>
-                </Tabs>
+                  <Stat>
+                    <StatLabel color="gray.400">Rendimiento</StatLabel>
+                    <StatNumber color="green.400">+5.8%</StatNumber>
+                    <StatHelpText>
+                      <StatArrow type="increase" />
+                      Últimos 30 días
+                    </StatHelpText>
+                  </Stat>
+                  
+                  <Stat>
+                    <StatLabel color="gray.400">Mejor Activo</StatLabel>
+                    <StatNumber color="white">BTC/USDT</StatNumber>
+                    <StatHelpText>
+                      <StatArrow type="increase" />
+                      8.2% de retorno
+                    </StatHelpText>
+                  </Stat>
+                  
+                  <Stat>
+                    <StatLabel color="gray.400">Señales Activas</StatLabel>
+                    <StatNumber color="white">
+                      {((signals?.buySignals.length || 0) + (signals?.sellSignals.length || 0))}
+                    </StatNumber>
+                    <StatHelpText>
+                      <HStack spacing={1} flexWrap="wrap">
+                        <Badge colorScheme="green" variant="outline">{signals?.buySignals.length || 0} compra</Badge>
+                        <Badge colorScheme="red" variant="outline">{signals?.sellSignals.length || 0} venta</Badge>
+                      </HStack>
+                    </StatHelpText>
+                  </Stat>
+                </SimpleGrid>
               </VStack>
             </Skeleton>
           </Box>
-          
-          {/* Resumen de alertas */}
-          <Box 
-            p={{ base: 3, md: 4, lg: 6 }}
-            bg={bgColor} 
-            borderRadius="xl" 
-            borderWidth="1px" 
-            borderColor={borderColor}
-            boxShadow="xl"
-          >
-            <VStack spacing={4} align="stretch">
-              <Flex justify="space-between" align="center">
-                <Heading size="md" color="white">Mis Alertas</Heading>
-                <Button 
-                  as={RouterLink} 
-                  to="/alerts" 
-                  size="xs" 
-                  colorScheme="blue"
-                  leftIcon={<AddIcon />}
-                >
-                  Configurar
-                </Button>
-              </Flex>
-              
-              <Box maxH="300px" overflowY="auto">
-                {userAlerts.length > 0 ? (
-                  <SimpleGrid columns={1} spacing={3}>
-                    {/* Mostrar solo alertas activas */}
-                    {userAlerts
-                      .filter(alert => alert.enabled)
-                      .slice(0, 3) // Mostrar máximo 3 alertas en el dashboard
-                      .map(alert => (
-                        <Box key={alert.id} p={4} bg="gray.700" borderRadius="md">
-                          <HStack justify="space-between">
-                            <HStack>
-                              <Badge colorScheme="green">Activa</Badge>
-                              <Text fontWeight="bold">{alert.symbol}</Text>
-                            </HStack>
-                            <Badge colorScheme={alert.signalType === 'buy' ? 'blue' : alert.signalType === 'sell' ? 'red' : 'purple'}>
-                              {alert.signalType === 'buy' ? 'Compra' : alert.signalType === 'sell' ? 'Venta' : 'Ambos'}
-                            </Badge>
-                          </HStack>
-                          <Text fontSize="sm" color="gray.300" mt={1}>
-                            {alert.priceTarget && alert.priceTargetType 
-                              ? `Alerta cuando precio ${alert.priceTargetType === 'above' ? '>' : '<'} $${alert.priceTarget.toLocaleString()}`
-                              : `Alerta cuando confianza > ${alert.confidenceThreshold ? (alert.confidenceThreshold * 100).toFixed(0) : '70'}%`
-                            }
-                          </Text>
-                        </Box>
-                      ))
-                    }
-                    
-                    {userAlerts.length > 3 && (
-                      <Text fontSize="sm" color="gray.400" textAlign="center">
-                        + {userAlerts.length - 3} alertas más
-                      </Text>
-                    )}
-                    
-                    <Button 
-                      as={RouterLink} 
-                      to="/alerts" 
-                      variant="outline" 
-                      size="sm" 
-                      width="100%"
-                    >
-                      Ver todas las alertas
-                    </Button>
-                  </SimpleGrid>
-                ) : (
-                  <VStack spacing={4} py={6} align="center">
-                    <Text color="gray.400">No has creado ninguna alerta todavía</Text>
-                    <Button 
-                      as={RouterLink}
-                      to="/alerts"
-                      leftIcon={<AddIcon />}
-                      colorScheme="blue"
-                      size="sm"
-                    >
-                      Crear primera alerta
-                    </Button>
-                  </VStack>
-                )}
-              </Box>
-            </VStack>
-          </Box>
-        </VStack>
-      </GridItem>
+        </GridItem>
 
-      {/* Panel inferior - Transacciones y estadísticas */}
-      <GridItem colSpan={{ base: 1, md: 2, lg: 3 }}>
-        <Box 
-          p={{ base: 3, md: 4, lg: 6 }}
-          bg={bgColor} 
-          borderRadius="xl" 
-          borderWidth="1px" 
-          borderColor={borderColor}
-          boxShadow="xl"
-        >
-          <Skeleton isLoaded={!loading} height={loading ? "200px" : "auto"}>
-            <VStack spacing={4} align="stretch">
-              <Heading size="md" color="white">Resumen del Mercado</Heading>
-              <SimpleGrid columns={{ base: 1, sm: 2, md: 2, lg: 4 }} spacing={4}>
-                <Stat>
-                  <StatLabel color="gray.400">Operaciones</StatLabel>
-                  <StatNumber color="white">24</StatNumber>
-                  <StatHelpText>
-                    <StatArrow type="increase" />
-                    12 ganancias / 12 pérdidas
-                  </StatHelpText>
-                </Stat>
-                
-                <Stat>
-                  <StatLabel color="gray.400">Rendimiento</StatLabel>
-                  <StatNumber color="green.400">+5.8%</StatNumber>
-                  <StatHelpText>
-                    <StatArrow type="increase" />
-                    Últimos 30 días
-                  </StatHelpText>
-                </Stat>
-                
-                <Stat>
-                  <StatLabel color="gray.400">Mejor Activo</StatLabel>
-                  <StatNumber color="white">BTC/USDT</StatNumber>
-                  <StatHelpText>
-                    <StatArrow type="increase" />
-                    8.2% de retorno
-                  </StatHelpText>
-                </Stat>
-                
-                <Stat>
-                  <StatLabel color="gray.400">Señales Activas</StatLabel>
-                  <StatNumber color="white">
-                    {((signals?.buySignals.length || 0) + (signals?.sellSignals.length || 0))}
-                  </StatNumber>
-                  <StatHelpText>
-                    <HStack spacing={1} flexWrap="wrap">
-                      <Badge colorScheme="green" variant="outline">{signals?.buySignals.length || 0} compra</Badge>
-                      <Badge colorScheme="red" variant="outline">{signals?.sellSignals.length || 0} venta</Badge>
-                    </HStack>
-                  </StatHelpText>
-                </Stat>
-              </SimpleGrid>
-            </VStack>
-          </Skeleton>
-        </Box>
-      </GridItem>
-
-      {/* Modal de detalles de señal */}
-      <SignalDetailsModal 
-        isOpen={isDetailsOpen} 
-        onClose={onDetailsClose} 
-        signal={selectedSignal}
-      />
-    </Grid>
+        {/* Modal de detalles de señal */}
+        <SignalDetailsModal 
+          isOpen={isDetailsOpen} 
+          onClose={onDetailsClose} 
+          signal={selectedSignal}
+        />
+      </Grid>
+    </Box>
   );
 }; 

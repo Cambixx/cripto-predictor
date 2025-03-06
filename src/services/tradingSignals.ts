@@ -21,27 +21,27 @@ export type TimeFrame = 'HOUR' | 'DAY' | 'WEEK' | 'MONTH';
 // Tipo para el análisis técnico
 export interface TechnicalAnalysis {
   trend: 'up' | 'down' | 'sideways';
-  indicators: {
-    rsi: number;
+    indicators: {
+      rsi: number;
     macd: {
       line: number;
       signal: number;
       histogram: number;
     };
-    bollingerBands: {
-      upper: number;
-      middle: number;
-      lower: number;
-    };
+      bollingerBands: {
+        upper: number;
+        middle: number;
+        lower: number;
+      };
     stochastic?: {
-      k: number;
-      d: number;
-    };
+        k: number;
+        d: number;
+      };
     ema?: {
       ema50: number;
       ema200: number;
     };
-    adx: number;
+        adx: number;
     ichimokuCloud: {
       tenkanSen: number;
       kijunSen: number;
@@ -61,12 +61,12 @@ export interface TechnicalAnalysis {
 
 // Tipo para el sentimiento del mercado
 export interface MarketSentiment {
-  overallSentiment: 'positive' | 'negative' | 'neutral';
+    overallSentiment: 'positive' | 'negative' | 'neutral';
   socialMediaMentions: number;
   newsScore: number;
-  relevantNews: {
-    headline: string;
-    sentiment: 'positive' | 'negative' | 'neutral';
+    relevantNews: {
+      headline: string;
+      sentiment: 'positive' | 'negative' | 'neutral';
     source: string;
     date: string;
   }[];
@@ -217,7 +217,7 @@ function calculateMACD(prices: number[]): { line: number; signal: number; histog
 function calculateBollingerBands(prices: number[], periods: number = 20, stdDev: number = 2): { upper: number; middle: number; lower: number } {
   if (prices.length < periods) {
     const lastPrice = prices[prices.length - 1] || 0;
-    return {
+      return {
       upper: lastPrice * 1.05,
       middle: lastPrice,
       lower: lastPrice * 0.95
@@ -792,7 +792,7 @@ async function generateSignalForSymbol(symbol: string, timeframe: TimeFrame): Pr
     if (confidence < 0.6) {
       return null;
     }
-    
+
     return {
       symbol,
       signal,
@@ -822,7 +822,7 @@ async function generateRealTimeSignals(timeframe: TimeFrame): Promise<TopSignals
     
     // Obtener los pares de trading activos
     const activePairs = await getActiveTradingPairs();
-    
+
     // Combinar pares populares y activos, priorizando los populares
     const combinedPairs = [...new Set([
       ...popularPairs.filter(pair => activePairs.includes(pair)),
@@ -886,8 +886,8 @@ export const generateDashboardSignals = async (count: number = 5): Promise<Dashb
         // Alternamos entre compra y venta para tener variedad
         const type = index % 2 === 0 ? SignalType.BUY : SignalType.SELL;
         const confidence = index % 3 === 0 ? ConfidenceLevel.HIGH : ConfidenceLevel.MEDIUM;
-        
-        return {
+
+    return {
           id: `default-${index}-${currentTime}`,
           symbol,
           type,
