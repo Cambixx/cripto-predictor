@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { API_CONFIG } from '../config/api';
 
-interface NewsItem {
+export interface NewsItem {
   id: number;
   headline: string;
   summary: string;
@@ -13,80 +13,16 @@ interface NewsItem {
   sentiment: 'positive' | 'negative' | 'neutral';
 }
 
-// Noticias simuladas para desarrollo
-const mockNews: NewsItem[] = [
-  {
-    id: 1,
-    headline: 'Bitcoin alcanza nuevos máximos en volumen de trading',
-    summary: 'El volumen de trading de Bitcoin ha alcanzado nuevos máximos históricos, indicando un creciente interés institucional.',
-    url: 'https://example.com/btc-news-1',
-    source: 'Crypto News',
-    datetime: Date.now(),
-    image: '',
-    category: 'crypto',
-    sentiment: 'positive'
-  },
-  {
-    id: 2,
-    headline: 'Ethereum 2.0 muestra avances significativos en desarrollo',
-    summary: 'Los desarrolladores de Ethereum reportan avances importantes en la actualización a ETH 2.0.',
-    url: 'https://example.com/eth-news-1',
-    source: 'Crypto Daily',
-    datetime: Date.now(),
-    image: '',
-    category: 'crypto',
-    sentiment: 'positive'
-  },
-  {
-    id: 3,
-    headline: 'Binance expande servicios en América Latina',
-    summary: 'Binance anuncia expansión de servicios y nuevas integraciones en la región latinoamericana.',
-    url: 'https://example.com/bnb-news-1',
-    source: 'Crypto Market',
-    datetime: Date.now(),
-    image: '',
-    category: 'crypto',
-    sentiment: 'positive'
-  },
-  {
-    id: 4,
-    headline: 'Solana mejora rendimiento de la red',
-    summary: 'Actualizaciones recientes en la red Solana muestran mejoras significativas en velocidad y estabilidad.',
-    url: 'https://example.com/sol-news-1',
-    source: 'Crypto Tech',
-    datetime: Date.now(),
-    image: '',
-    category: 'crypto',
-    sentiment: 'positive'
-  },
-  {
-    id: 5,
-    headline: 'Ripple gana terreno en pagos internacionales',
-    summary: 'Nuevas asociaciones de Ripple con instituciones financieras impulsan adopción de XRP.',
-    url: 'https://example.com/xrp-news-1',
-    source: 'Crypto Finance',
-    datetime: Date.now(),
-    image: '',
-    category: 'crypto',
-    sentiment: 'positive'
-  }
-];
-
+// Función para obtener noticias reales
 export const getLatestNews = async (limit: number = 10): Promise<NewsItem[]> => {
   try {
-    // Por ahora, usamos noticias simuladas
-    console.log('Usando noticias simuladas mientras se resuelve el problema con Finnhub');
-    return mockNews.slice(0, limit);
-
-    /* Código original comentado hasta resolver el problema con Finnhub
+    // Intentar obtener noticias de Finnhub
     const response = await axios.get(`${API_CONFIG.FINNHUB.BASE_URL}${API_CONFIG.FINNHUB.ENDPOINTS.CRYPTO_NEWS}`, {
       params: {
         token: API_CONFIG.FINNHUB.API_KEY,
         category: 'crypto',
       },
     });
-
-    console.log('Respuesta de Finnhub:', response.data);
 
     if (!Array.isArray(response.data)) {
       console.error('Respuesta inesperada de Finnhub:', response.data);
@@ -116,16 +52,134 @@ export const getLatestNews = async (limit: number = 10): Promise<NewsItem[]> => 
       .filter((news): news is NewsItem => news !== null);
 
     if (processedNews.length === 0) {
-      console.warn('No se encontraron noticias válidas');
-      return [];
+      console.warn('No se encontraron noticias válidas en Finnhub');
+      // Intentar con fuente alternativa
+      return await getNewsFromAlternativeSource(limit);
     }
 
     return processedNews;
-    */
   } catch (error) {
-    console.error('Error detallado al obtener noticias:', error);
-    // En caso de error, devolvemos las noticias simuladas
-    return mockNews.slice(0, limit);
+    console.error('Error al obtener noticias de Finnhub:', error);
+    // En caso de error, intentar con fuente alternativa
+    return await getNewsFromAlternativeSource(limit);
+  }
+};
+
+// Función para obtener noticias de una fuente alternativa
+const getNewsFromAlternativeSource = async (limit: number): Promise<NewsItem[]> => {
+  try {
+    // Intentar con CryptoCompare como fuente alternativa
+    const response = await axios.get('https://min-api.cryptocompare.com/data/v2/news/', {
+      params: {
+        lang: 'ES'
+      }
+    });
+
+    if (!response.data || !response.data.Data || !Array.isArray(response.data.Data)) {
+      throw new Error('Formato de respuesta inválido de CryptoCompare');
+    }
+
+    return response.data.Data.slice(0, limit).map((news: any) => ({
+      id: news.id || Date.now(),
+      headline: news.title,
+      summary: news.body.length > 200 ? news.body.substring(0, 200) + '...' : news.body,
+      url: news.url,
+      source: news.source || 'CryptoCompare',
+      datetime: news.published_on * 1000,
+      image: news.imageurl || '',
+      category: 'crypto',
+      sentiment: analyzeSentiment(news.title + ' ' + news.body)
+    }));
+  } catch (alternativeError) {
+    console.error('Error al obtener noticias de fuente alternativa:', alternativeError);
+    
+    // Como último recurso, obtener datos de la API de noticias públicas
+    try {
+      const response = await axios.get('https://newsapi.org/v2/everything', {
+        params: {
+          q: 'cryptocurrency OR bitcoin OR blockchain',
+          language: 'es',
+          sortBy: 'publishedAt',
+          apiKey: process.env.VITE_NEWS_API_KEY || 'fallback_key'
+        }
+      });
+      
+      if (!response.data || !response.data.articles || !Array.isArray(response.data.articles)) {
+        throw new Error('Formato de respuesta inválido de NewsAPI');
+      }
+      
+      return response.data.articles.slice(0, limit).map((article: any, index: number) => ({
+        id: index,
+        headline: article.title,
+        summary: article.description || 'Sin descripción disponible',
+        url: article.url,
+        source: article.source?.name || 'Desconocido',
+        datetime: new Date(article.publishedAt).getTime(),
+        image: article.urlToImage || '',
+        category: 'crypto',
+        sentiment: analyzeSentiment(article.title + ' ' + (article.description || ''))
+      }));
+    } catch (finalError) {
+      console.error('Error al obtener noticias de todas las fuentes:', finalError);
+      
+      // Generar noticias basadas en datos de mercado actuales como último recurso
+      return generateNewsFromMarketData(limit);
+    }
+  }
+};
+
+// Función para generar noticias basadas en datos de mercado actuales
+const generateNewsFromMarketData = async (limit: number): Promise<NewsItem[]> => {
+  try {
+    // Obtener datos de mercado actuales
+    const response = await axios.get('https://api.coingecko.com/api/v3/coins/markets', {
+      params: {
+        vs_currency: 'usd',
+        order: 'market_cap_desc',
+        per_page: 10,
+        page: 1,
+        sparkline: false
+      }
+    });
+    
+    if (!Array.isArray(response.data)) {
+      throw new Error('Formato de respuesta inválido de CoinGecko');
+    }
+    
+    // Generar noticias basadas en los datos de mercado
+    return response.data.slice(0, limit).map((coin: any) => {
+      const priceChange = coin.price_change_percentage_24h || 0;
+      const isPositive = priceChange > 0;
+      const sentiment: 'positive' | 'negative' | 'neutral' = 
+        priceChange > 2 ? 'positive' : 
+        priceChange < -2 ? 'negative' : 
+        'neutral';
+      
+      const headline = isPositive 
+        ? `${coin.name} sube un ${Math.abs(priceChange).toFixed(2)}% en las últimas 24 horas`
+        : `${coin.name} cae un ${Math.abs(priceChange).toFixed(2)}% en las últimas 24 horas`;
+      
+      const summary = isPositive
+        ? `El precio de ${coin.name} (${coin.symbol.toUpperCase()}) ha aumentado a $${coin.current_price.toFixed(2)}, con un volumen de trading de $${(coin.total_volume / 1000000).toFixed(2)} millones en las últimas 24 horas.`
+        : `El precio de ${coin.name} (${coin.symbol.toUpperCase()}) ha disminuido a $${coin.current_price.toFixed(2)}, con un volumen de trading de $${(coin.total_volume / 1000000).toFixed(2)} millones en las últimas 24 horas.`;
+      
+      return {
+        id: Date.now() + Math.floor(Math.random() * 1000),
+        headline,
+        summary,
+        url: `https://www.coingecko.com/en/coins/${coin.id}`,
+        source: 'Market Data',
+        datetime: Date.now(),
+        image: coin.image || '',
+        category: 'crypto',
+        sentiment
+      };
+    });
+  } catch (error) {
+    console.error('Error al generar noticias desde datos de mercado:', error);
+    
+    // Si todo falla, devolver un array vacío
+    return [];
   }
 };
 

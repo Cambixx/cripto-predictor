@@ -61,9 +61,9 @@ import {
   SignalType, 
   ConfidenceLevel, 
   getDefaultTechnicalAnalysis,
-  generateExampleSignal,
+  getSignalForSymbol,
   type TradingPattern,
-  generateTradingStrategy
+  getTradingPattern
 } from '../../services/tradingSignals'
 import { getActiveTradingPairs, getCoinData } from '../../services/api'
 import { registerForPushNotifications, getUserAlerts, UserAlert } from '../../services/notificationService'
@@ -621,9 +621,12 @@ export const DashboardPage = () => {
   // Estado para el perfil de riesgo del usuario
   const [riskProfile, setRiskProfile] = useState<'conservative' | 'moderate' | 'aggressive'>('moderate');
   
-  // Estado para patrones de trading recomendados
-  const [tradingPatterns, setTradingPatterns] = useState<TradingPattern[]>([]);
+  // Estado para almacenar los patrones de trading
+  const [tradingPatternsState, setTradingPatternsState] = useState<TradingPattern[]>([]);
   
+  // Estado para el patrón seleccionado
+  const [selectedPattern, setSelectedPattern] = useState<TradingPattern | null>(null);
+
   // Modal de detalles
   const {
     isOpen: isDetailsOpen,
@@ -901,47 +904,107 @@ export const DashboardPage = () => {
   }, [signals, riskProfile]);
 
   // Señales de respaldo para cuando no hay señales disponibles
-  const defaultSignals = useMemo(() => {
-    // Solo crear señales de respaldo si no hay señales filtradas
-    if ((filteredBuySignals.length === 0 && filteredSellSignals.length === 0) && 
-        availableSymbols.length > 0) {
-      
-      // Crear 3 señales de compra y 2 de venta por defecto
-      console.log("Generando señales de respaldo para el dashboard");
-      
-      const defaultSymbols = availableSymbols.slice(0, 5);
-      
-      // Generar señales de compra
-      const buySignals: TradingSignal[] = defaultSymbols.slice(0, 3).map((symbol, idx) => {
-        // Crear señales de compra con diferentes niveles de confianza
-        const confidence = 0.65 + (idx * 0.1); // 0.65, 0.75, 0.85
-        const price = 1000 + (idx * 500);
-        return generateExampleSignal(symbol, 'buy', price, confidence);
-      });
-      
-      // Generar señales de venta
-      const sellSignals: TradingSignal[] = defaultSymbols.slice(3, 5).map((symbol, idx) => {
-        // Crear señales de venta con diferentes niveles de confianza
-        const confidence = 0.7 + (idx * 0.1); // 0.7, 0.8
-        const price = 2000 + (idx * 300);
-        return generateExampleSignal(symbol, 'sell', price, confidence);
-      });
-      
-      return { buySignals, sellSignals };
-    }
+  const [defaultSignalsState, setDefaultSignalsState] = useState<TopSignals | null>(null);
+
+  // Efecto para cargar señales de respaldo cuando sea necesario
+  useEffect(() => {
+    const loadDefaultSignals = async () => {
+      // Solo crear señales de respaldo si no hay señales filtradas
+      if ((filteredBuySignals.length === 0 && filteredSellSignals.length === 0) && 
+          availableSymbols.length > 0) {
+        
+        console.log("Generando señales de respaldo para el dashboard");
+        
+        const defaultSymbols = availableSymbols.slice(0, 5);
+        
+        // Generar señales de compra con datos reales
+        const buySignalsPromises = defaultSymbols.slice(0, 3).map(async (symbol) => {
+          try {
+            // Usar la función que obtiene datos reales
+            return await getSignalForSymbol(symbol, 'buy');
+          } catch (error) {
+            console.error(`Error generando señal real para ${symbol}:`, error);
+            // Fallback a datos básicos si hay error
+            const coinData = await getCoinData(symbol);
+            return {
+              symbol,
+              signal: 'buy' as const,
+              price: coinData?.price || 1000,
+              priceChange24h: coinData?.priceChangePercent || 1.5,
+              volume24h: coinData?.volume24h || 1000000,
+              timestamp: new Date().toISOString(),
+              confidence: 0.7,
+              reasons: ['Señal de respaldo generada con datos básicos'],
+              technicalAnalysis: getDefaultTechnicalAnalysis(coinData?.price || 1000),
+              marketSentiment: {
+                overallSentiment: 'neutral' as const,
+                socialMediaMentions: 1000,
+                newsScore: 5,
+                relevantNews: []
+              }
+            };
+          }
+        });
+        
+        // Generar señales de venta con datos reales
+        const sellSignalsPromises = defaultSymbols.slice(3, 5).map(async (symbol) => {
+          try {
+            // Usar la función que obtiene datos reales
+            return await getSignalForSymbol(symbol, 'sell');
+          } catch (error) {
+            console.error(`Error generando señal real para ${symbol}:`, error);
+            // Fallback a datos básicos si hay error
+            const coinData = await getCoinData(symbol);
+            return {
+              symbol,
+              signal: 'sell' as const,
+              price: coinData?.price || 2000,
+              priceChange24h: coinData?.priceChangePercent || -1.5,
+              volume24h: coinData?.volume24h || 1000000,
+              timestamp: new Date().toISOString(),
+              confidence: 0.7,
+              reasons: ['Señal de respaldo generada con datos básicos'],
+              technicalAnalysis: getDefaultTechnicalAnalysis(coinData?.price || 2000),
+              marketSentiment: {
+                overallSentiment: 'neutral' as const,
+                socialMediaMentions: 1000,
+                newsScore: 5,
+                relevantNews: []
+              }
+            };
+          }
+        });
+        
+        // Resolver todas las promesas
+        const buySignals = await Promise.all(buySignalsPromises);
+        const sellSignals = await Promise.all(sellSignalsPromises);
+        
+        setDefaultSignalsState({ buySignals, sellSignals });
+      }
+    };
     
-    return null;
+    loadDefaultSignals();
   }, [filteredBuySignals, filteredSellSignals, availableSymbols]);
   
   // Señales finales a mostrar (filtradas o respaldo)
-  const displayBuySignals = useMemo(() => {
-    return filteredBuySignals.length > 0 ? filteredBuySignals : defaultSignals?.buySignals || [];
-  }, [filteredBuySignals, defaultSignals]);
-  
-  const displaySellSignals = useMemo(() => {
-    return filteredSellSignals.length > 0 ? filteredSellSignals : defaultSignals?.sellSignals || [];
-  }, [filteredSellSignals, defaultSignals]);
-  
+  const displaySignals = useMemo((): TopSignals => {
+    // Si hay señales filtradas, usarlas
+    if (filteredBuySignals.length > 0 || filteredSellSignals.length > 0) {
+      return {
+        buySignals: filteredBuySignals,
+        sellSignals: filteredSellSignals
+      };
+    }
+    
+    // Si hay señales de respaldo, usarlas
+    if (defaultSignalsState) {
+      return defaultSignalsState;
+    }
+    
+    // Caso improbable: no hay señales de ningún tipo
+    return { buySignals: [], sellSignals: [] };
+  }, [filteredBuySignals, filteredSellSignals, defaultSignalsState]);
+
   // Manejar cambio de perfil de riesgo
   const handleRiskProfileChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
     const profile = event.target.value as 'conservative' | 'moderate' | 'aggressive';
@@ -969,133 +1032,60 @@ export const DashboardPage = () => {
     }
   }, []);
 
-  // Generar estrategias de trading de ejemplo basadas en la señal seleccionada y perfil de riesgo
-  const defaultTradingPatterns = useMemo(() => {
-    if (!selectedSignal && !activeSymbol) return [];
+  // Función para generar patrones de trading para un símbolo
+  const generatePatterns = async (symbol: string) => {
+    // Obtener datos actuales del mercado
+    const coinData = await getCoinData(symbol);
+    const price = coinData?.price || 1000;
     
-    const symbol = selectedSignal?.symbol || activeSymbol;
-    const price = selectedSignal?.price || 1000; // Precio por defecto si no hay señal
+    // Determinar la tendencia basada en el cambio de precio
+    const priceChange = coinData?.priceChangePercent || 0;
+    const trend: 'up' | 'down' | 'sideways' = 
+      priceChange > 1.5 ? 'up' : 
+      priceChange < -1.5 ? 'down' : 
+      'sideways';
     
-    console.log(`Generando patrones de trading de ejemplo para ${symbol}`);
+    // Determinar volatilidad basada en el rango de precio
+    const volatility: 'high' | 'medium' | 'low' = 
+      Math.abs(priceChange) > 5 ? 'high' : 
+      Math.abs(priceChange) > 2 ? 'medium' : 
+      'low';
     
-    // Determinar tendencia de mercado basada en datos disponibles
-    let marketCondition: { trend: 'up' | 'down' | 'sideways', volatility: 'high' | 'medium' | 'low' } = {
-      trend: 'sideways',
-      volatility: 'medium'
-    };
+    // Condición de mercado para generar patrones coherentes
+    const marketCondition = { trend, volatility };
     
-    // Si hay una señal seleccionada, usar su análisis técnico para determinar tendencia
-    if (selectedSignal?.technicalAnalysis) {
-      marketCondition.trend = selectedSignal.technicalAnalysis.trend;
-      
-      // Calcular volatilidad basada en bandas de Bollinger
-      const { upper, lower } = selectedSignal.technicalAnalysis.indicators.bollingerBands;
-      const volatilityRatio = upper / lower;
-      
-      if (volatilityRatio > 1.15) {
-        marketCondition.volatility = 'high';
-      } else if (volatilityRatio > 1.05) {
-        marketCondition.volatility = 'medium';
-      } else {
-        marketCondition.volatility = 'low';
-      }
-    }
-    // Si no hay señal, intentar estimar tendencia por el perfil de riesgo
-    else if (signals) {
-      // Buscar señales del mismo símbolo
-      const symbolSignals = [
-        ...(signals.buySignals || []), 
-        ...(signals.sellSignals || [])
-      ].filter(s => s.symbol === symbol);
-      
-      if (symbolSignals.length > 0) {
-        // Si hay señales, usar su análisis técnico
-        const signal = symbolSignals[0];
-        marketCondition.trend = signal.technicalAnalysis.trend;
-        
-        // Calcular volatilidad
-        const { upper, lower } = signal.technicalAnalysis.indicators.bollingerBands;
-        const volatilityRatio = upper / lower;
-        
-        if (volatilityRatio > 1.15) {
-          marketCondition.volatility = 'high';
-        } else if (volatilityRatio > 1.05) {
-          marketCondition.volatility = 'medium';
-        } else {
-          marketCondition.volatility = 'low';
-        }
-      }
-    }
-    
-    console.log(`Condición de mercado para ${symbol}: Tendencia ${marketCondition.trend}, Volatilidad ${marketCondition.volatility}`);
-    
-    // Tipo de patrón principal basado en señal, tendencia y perfil de riesgo
+    // Determinar el tipo de patrón primario basado en la tendencia y el perfil de riesgo
     let primaryPatternType: 'bullish' | 'bearish' | 'neutral';
     
-    // Si hay una señal seleccionada, ajustar patrones según su tendencia y tipo
-    if (selectedSignal) {
-      if (selectedSignal.signal === 'buy') {
-        // Para señales de compra
-        primaryPatternType = 'bullish';
-      } else {
-        // Para señales de venta
-        primaryPatternType = 'bearish';
-      }
-    } 
-    // Si no hay señal, usar tendencia detectada y perfil de riesgo
-    else {
-      switch (riskProfile) {
-        case 'conservative':
-          // Perfil conservador - Preferir estrategias a favor de la tendencia o neutrales
-          if (marketCondition.trend === 'up') {
-            primaryPatternType = Math.random() > 0.3 ? 'bullish' : 'neutral';
-          } else if (marketCondition.trend === 'down') {
-            primaryPatternType = Math.random() > 0.3 ? 'bearish' : 'neutral';
-          } else {
-            primaryPatternType = 'neutral';
-          }
-          break;
-          
-        case 'aggressive':
-          // Perfil agresivo - Más inclinado a patrones direccionales, incluso contra tendencia
-          if (marketCondition.trend === 'up') {
-            // En tendencia alcista, mayoría bullish pero también oportunidades bajistas
-            primaryPatternType = Math.random() > 0.25 ? 'bullish' : 'bearish';
-          } else if (marketCondition.trend === 'down') {
-            // En tendencia bajista, mayoría bearish pero también oportunidades bullish
-            primaryPatternType = Math.random() > 0.25 ? 'bearish' : 'bullish';
-          } else {
-            // En mercado lateral, preferir rupturas direccionales
-            primaryPatternType = Math.random() > 0.5 ? 'bullish' : 'bearish';
-          }
-          break;
-          
-        default: // Perfil moderado
-          // Moderado - Equilibrio, mayormente a favor de tendencia
-          if (marketCondition.trend === 'up') {
-            primaryPatternType = Math.random() > 0.2 ? 'bullish' : (Math.random() > 0.5 ? 'bearish' : 'neutral');
-          } else if (marketCondition.trend === 'down') {
-            primaryPatternType = Math.random() > 0.2 ? 'bearish' : (Math.random() > 0.5 ? 'bullish' : 'neutral');
-          } else {
-            // En mercado lateral, equilibrio
-            const rand = Math.random();
-            primaryPatternType = rand > 0.6 ? 'bullish' : rand > 0.3 ? 'bearish' : 'neutral';
-          }
-      }
+    if (trend === 'up') {
+      // En tendencia alcista, perfil conservador es más neutral, agresivo más alcista
+      primaryPatternType = riskProfile === 'conservative' ? 
+        (Math.random() > 0.7 ? 'bullish' : 'neutral') : 
+        riskProfile === 'aggressive' ? 
+        'bullish' : 
+        (Math.random() > 0.4 ? 'bullish' : 'neutral');
+    } else if (trend === 'down') {
+      // En tendencia bajista, perfil conservador es más neutral, agresivo más bajista
+      primaryPatternType = riskProfile === 'conservative' ? 
+        (Math.random() > 0.7 ? 'bearish' : 'neutral') : 
+        riskProfile === 'aggressive' ? 
+        'bearish' : 
+        (Math.random() > 0.4 ? 'bearish' : 'neutral');
+    } else {
+      // En tendencia lateral, depende más del perfil de riesgo
+      primaryPatternType = riskProfile === 'conservative' ? 
+        'neutral' : 
+        riskProfile === 'aggressive' ? 
+        (Math.random() > 0.5 ? 'bullish' : 'bearish') : 
+        (Math.random() > 0.6 ? 'neutral' : (Math.random() > 0.5 ? 'bullish' : 'bearish'));
     }
     
     // Generar patrones coherentes con la tendencia y el perfil de riesgo
     const patterns: TradingPattern[] = [];
     
     // Siempre añadir al menos un patrón del tipo primario, utilizando la información de mercado
-    patterns.push(
-      generateTradingStrategy(
-        symbol, 
-        primaryPatternType, 
-        price,
-        marketCondition
-      )
-    );
+    const primaryPattern = await getTradingPattern(symbol, primaryPatternType);
+    patterns.push(primaryPattern);
     
     // Posibilidad de añadir un segundo patrón complementario
     if (Math.random() > 0.4) {
@@ -1122,14 +1112,8 @@ export const DashboardPage = () => {
       }
       
       // Generar patrón secundario con la misma información de mercado para coherencia
-      patterns.push(
-        generateTradingStrategy(
-          symbol, 
-          secondaryType, 
-          price,
-          marketCondition
-        )
-      );
+      const secondaryPattern = await getTradingPattern(symbol, secondaryType);
+      patterns.push(secondaryPattern);
     }
     
     // En perfil agresivo, mayor probabilidad de tercer patrón
@@ -1143,34 +1127,47 @@ export const DashboardPage = () => {
       const filteredOptions = tertiaryOptions.filter(t => t !== primaryPatternType);
       const tertiaryType = filteredOptions[Math.floor(Math.random() * filteredOptions.length)];
       
-      patterns.push(
-        generateTradingStrategy(
-          symbol, 
-          tertiaryType, 
-          price,
-          marketCondition
-        )
-      );
+      const tertiaryPattern = await getTradingPattern(symbol, tertiaryType);
+      patterns.push(tertiaryPattern);
     }
     
     return patterns;
-  }, [selectedSignal, activeSymbol, riskProfile, signals]);
-  
-  // Usar patrones reales o los de ejemplo
-  const displayTradingPatterns = useMemo(() => {
-    // Si hay patrones generados para la señal seleccionada, usarlos
-    if (selectedSignal?.advancedPatterns && selectedSignal.advancedPatterns.length > 0) {
-      return selectedSignal.advancedPatterns;
+  };
+
+  // Efecto para cargar patrones de trading cuando cambia el símbolo activo
+  useEffect(() => {
+    const loadTradingPatterns = async () => {
+      if (!selectedSignal && !activeSymbol) return;
+      
+      const symbol = selectedSignal?.symbol || activeSymbol;
+      if (!symbol) return;
+      
+      try {
+        const patterns = await generatePatterns(symbol);
+        setTradingPatternsState(patterns);
+      } catch (error) {
+        console.error(`Error generando patrones para ${symbol}:`, error);
+      }
+    };
+    
+    loadTradingPatterns();
+  }, [selectedSignal, activeSymbol, riskProfile]);
+
+  // Usar patrones reales o los generados
+  const displayPatterns = useMemo((): TradingPattern[] => {
+    // Si hay un patrón seleccionado, usarlo
+    if (selectedPattern) {
+      return [selectedPattern];
     }
     
-    // Si no hay patrones reales pero tenemos patrones de ejemplo, usarlos
-    if (defaultTradingPatterns.length > 0) {
-      return defaultTradingPatterns;
+    // Si hay patrones generados, usarlos
+    if (tradingPatternsState.length > 0) {
+      return tradingPatternsState;
     }
     
     // Caso improbable: no hay patrones de ningún tipo
     return [];
-  }, [selectedSignal, defaultTradingPatterns]);
+  }, [selectedPattern, tradingPatternsState]);
 
   return (
     <Box>
@@ -1278,9 +1275,9 @@ export const DashboardPage = () => {
             {/* Estrategias de trading */}
             <Box>
               <Skeleton isLoaded={!loading} height={loading ? "200px" : "auto"}>
-                {displayTradingPatterns.length > 0 ? (
+                {displayPatterns.length > 0 ? (
                   <TradingStrategiesCard 
-                    patterns={displayTradingPatterns} 
+                    patterns={displayPatterns} 
                     symbol={selectedSignal?.symbol || activeSymbol} 
                   />
                 ) : (
@@ -1376,8 +1373,8 @@ export const DashboardPage = () => {
                       <TabPanels mt={4}>
                         <TabPanel p={0}>
                           <VStack spacing={2} align="stretch" maxH={{ base: "250px", md: "300px" }} overflowY="auto">
-                            {displayBuySignals && displayBuySignals.length > 0 ? (
-                              displayBuySignals.map((signal: TradingSignal) => (
+                            {displaySignals.buySignals && displaySignals.buySignals.length > 0 ? (
+                              displaySignals.buySignals.map((signal: TradingSignal) => (
                                 <Flex 
                                   key={signal.symbol} 
                                   p={3} 
@@ -1414,8 +1411,8 @@ export const DashboardPage = () => {
                         
                         <TabPanel p={0}>
                           <VStack spacing={2} align="stretch" maxH={{ base: "250px", md: "300px" }} overflowY="auto">
-                            {displaySellSignals && displaySellSignals.length > 0 ? (
-                              displaySellSignals.map((signal: TradingSignal) => (
+                            {displaySignals.sellSignals && displaySignals.sellSignals.length > 0 ? (
+                              displaySignals.sellSignals.map((signal: TradingSignal) => (
                                 <Flex 
                                   key={signal.symbol} 
                                   p={3} 
@@ -1514,7 +1511,7 @@ export const DashboardPage = () => {
                       </TabPanels>
                     </Tabs>
                   </Box>
-    </VStack>
+                </VStack>
               </Skeleton>
             </Box>
             

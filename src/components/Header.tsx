@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useState } from 'react'
 import { Link as RouterLink, useLocation } from 'react-router-dom'
 import {
   Box,
@@ -17,9 +17,11 @@ import {
   DrawerContent,
   DrawerCloseButton,
   useBreakpointValue,
-  Link
+  Link,
+  Stack
 } from '@chakra-ui/react'
 import { SearchIcon, BellIcon, HamburgerIcon } from '@chakra-ui/icons'
+import { FiMenu, FiX, FiGrid, FiTrendingUp, FiBarChart2, FiPieChart, FiFileText, FiBell, FiActivity } from 'react-icons/fi'
 
 export const Header = () => {
   const bgColor = useColorModeValue('white', 'gray.800')
@@ -28,36 +30,80 @@ export const Header = () => {
   const location = useLocation()
 
   const menuItems = [
-    { path: '/', label: 'Dashboard' },
-    { path: '/market', label: 'Market' },
-    { path: '/portfolio', label: 'Portfolio' },
-    { path: '/analytics', label: 'Analytics' },
-    { path: '/reports', label: 'Reports' },
-    { path: '/alerts', label: 'Alertas' }
+    { name: 'Dashboard', icon: <FiGrid />, path: '/dashboard' },
+    { name: 'Mercado', icon: <FiTrendingUp />, path: '/market' },
+    { name: 'Analytics', icon: <FiBarChart2 />, path: '/analytics' },
+    { name: 'Portfolio', icon: <FiPieChart />, path: '/portfolio' },
+    { name: 'Reportes', icon: <FiFileText />, path: '/reports' },
+    { name: 'Alertas', icon: <FiBell />, path: '/alerts' },
+    { name: 'Análisis Avanzado', icon: <FiActivity />, path: '/advanced' },
   ]
 
-  const MenuItems = () => (
-    <>
-      {menuItems.map((item) => (
-        <Link 
-          key={item.path} 
-          as={RouterLink} 
-          to={item.path}
-        >
-          <Button 
-            variant="ghost"
-            isActive={location.pathname === item.path}
-            _active={{
-              bg: 'brand.primary',
-              color: 'white'
-            }}
+  const activeColor = useColorModeValue('brand.primary', 'white')
+  const textColor = useColorModeValue('gray.500', 'gray.400')
+  const hoverBg = useColorModeValue('gray.100', 'gray.700')
+
+  // Menú principal
+  const DesktopNav = () => {
+    return (
+      <Stack direction="row" spacing={4}>
+        {menuItems.map((item) => (
+          <RouterLink
+            key={item.path}
+            to={item.path}
+            style={{ textDecoration: 'none' }}
           >
-            {item.label}
-          </Button>
-        </Link>
-      ))}
-    </>
-  )
+            <Button
+              variant="ghost"
+              px={2}
+              py={1}
+              rounded="md"
+              fontWeight="medium"
+              color={location.pathname === item.path ? activeColor : textColor}
+              _hover={{
+                bg: hoverBg
+              }}
+            >
+              {item.name}
+            </Button>
+          </RouterLink>
+        ))}
+      </Stack>
+    );
+  };
+
+  // Renderizar menú desplegable móvil 
+  const renderMobileMenu = () => {
+    return (
+      <VStack spacing={0} align="stretch">
+        {menuItems.map((item) => (
+          <RouterLink
+            key={item.path}
+            to={item.path}
+            style={{ textDecoration: 'none' }}
+            onClick={onClose}
+          >
+            <Button
+              variant="ghost"
+              justifyContent="flex-start"
+              width="100%"
+              py={6}
+              borderRadius={0}
+              fontWeight="medium"
+              color={location.pathname === item.path ? 'blue.600' : 'gray.500'}
+              _hover={{
+                bg: 'gray.100',
+                color: 'blue.600'
+              }}
+              leftIcon={item.icon}
+            >
+              {item.name}
+            </Button>
+          </RouterLink>
+        ))}
+      </VStack>
+    );
+  };
 
   return (
     <Box bg={bgColor} px={4} borderBottom="1px" borderColor={useColorModeValue('gray.200', 'gray.700')}>
@@ -68,7 +114,7 @@ export const Header = () => {
           </Link>
           {!isMobile && (
             <HStack spacing={2} ml={8}>
-              <MenuItems />
+              <DesktopNav />
             </HStack>
           )}
         </Flex>
@@ -108,9 +154,7 @@ export const Header = () => {
           <DrawerCloseButton />
           <DrawerHeader>Menú</DrawerHeader>
           <DrawerBody>
-            <VStack spacing={4} align="stretch">
-              <MenuItems />
-            </VStack>
+            {renderMobileMenu()}
           </DrawerBody>
         </DrawerContent>
       </Drawer>

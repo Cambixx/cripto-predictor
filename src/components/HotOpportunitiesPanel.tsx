@@ -21,6 +21,8 @@ import {
   Tag,
   TagLabel,
   TagLeftIcon,
+  Alert,
+  AlertIcon,
 } from '@chakra-ui/react';
 import {
   FiTrendingUp,
@@ -30,6 +32,8 @@ import {
   FiVolume2,
   FiPercent,
 } from 'react-icons/fi';
+import { getMarketData, getCoinPriceHistory } from '../services/api';
+import { calculateRSI, calculateMACD } from '../services/tradingSignals';
 
 interface CryptoOpportunity {
   symbol: string;
@@ -189,42 +193,116 @@ const OpportunityCard: React.FC<{ opportunity: CryptoOpportunity }> = ({ opportu
 export const HotOpportunitiesPanel: React.FC = () => {
   const [opportunities, setOpportunities] = useState<CryptoOpportunity[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // Aquí implementaremos la lógica para obtener y actualizar las oportunidades
+    // Implementar la lógica para obtener y actualizar las oportunidades
     const fetchOpportunities = async () => {
       try {
-        // TODO: Implementar la llamada a la API para obtener datos en tiempo real
-        // Por ahora usamos datos de ejemplo
-        const mockData: CryptoOpportunity[] = [
-          {
-            symbol: 'BTC/USDT',
-            price: 65000,
-            change24h: 2.5,
-            volume24h: 1500000000,
-            rsi: 58,
-            macdSignal: 'buy',
-            volumeProfile: 'high',
-            breakoutPotential: 85,
-            trendStrength: 75,
-            supportLevel: 64000,
-            resistanceLevel: 68000,
-            potentialReturn: 4.6
-          },
-          // Agregar más ejemplos aquí
-        ];
-
-        setOpportunities(mockData);
-        setIsLoading(false);
+        setIsLoading(true);
+        setError(null);
+        
+        // Obtener datos de mercado reales
+        const marketData = await getMarketData(15);
+        
+        // Procesar cada moneda para detectar oportunidades
+        const opportunitiesPromises = marketData.slice(0, 5).map(async (coin) => {
+          try {
+            // Obtener datos históricos para análisis técnico
+            const history = await getCoinPriceHistory(coin.symbol, 'DAY');
+            const prices = history.prices.map(p => p.price);
+            
+            // Calcular indicadores técnicos
+            const rsi = calculateRSI(prices);
+            const macd = calculateMACD(prices);
+            
+            // Determinar señal MACD
+            let macdSignal: 'buy' | 'sell' | 'neutral' = 'neutral';
+            if (macd.histogram > 0 && macd.histogram > macd.signal) {
+              macdSignal = 'buy';
+            } else if (macd.histogram < 0 && macd.histogram < macd.signal) {
+              macdSignal = 'sell';
+            }
+            
+            // Calcular perfil de volumen
+            const avgVolume = history.prices.reduce((sum, p) => sum + (p.volume || 0), 0) / history.prices.length;
+            let volumeProfile: 'high' | 'medium' | 'low' = 'medium';
+            if (coin.volume24h > avgVolume * 1.5) {
+              volumeProfile = 'high';
+            } else if (coin.volume24h < avgVolume * 0.7) {
+              volumeProfile = 'low';
+            }
+            
+            // Calcular niveles de soporte y resistencia
+            const sortedPrices = [...prices].sort((a, b) => a - b);
+            const supportLevel = sortedPrices[Math.floor(sortedPrices.length * 0.25)];
+            const resistanceLevel = sortedPrices[Math.floor(sortedPrices.length * 0.75)];
+            
+            // Calcular potencial de ruptura
+            const volatility = Math.max(...prices) / Math.min(...prices) - 1;
+            const priceRange = (resistanceLevel - supportLevel) / coin.price;
+            const breakoutPotential = Math.min(100, (volatility * 100 + priceRange * 200) / 2);
+            
+            // Calcular fuerza de tendencia
+            const priceChange = (prices[prices.length - 1] / prices[0]) - 1;
+            const trendStrength = Math.min(100, Math.abs(priceChange) * 200);
+            
+            // Calcular retorno potencial
+            let potentialReturn = 0;
+            if (macdSignal === 'buy') {
+              potentialReturn = ((resistanceLevel / coin.price) - 1) * 100;
+            } else if (macdSignal === 'sell') {
+              potentialReturn = ((coin.price / supportLevel) - 1) * 100;
+            } else {
+              potentialReturn = priceRange * 100;
+            }
+            
+            return {
+              symbol: coin.symbol,
+              price: coin.price,
+              change24h: coin.priceChangePercent,
+              volume24h: coin.volume24h,
+              rsi,
+              macdSignal,
+              volumeProfile,
+              breakoutPotential,
+              trendStrength,
+              supportLevel,
+              resistanceLevel,
+              potentialReturn
+            };
+          } catch (error) {
+            console.error(`Error procesando datos para ${coin.symbol}:`, error);
+            return null;
+          }
+        });
+        
+        // Esperar a que se resuelvan todas las promesas
+        const results = await Promise.all(opportunitiesPromises);
+        
+        // Filtrar resultados nulos y ordenar por potencial
+        const validOpportunities = results
+          .filter((op): op is CryptoOpportunity => op !== null)
+          .sort((a, b) => calculateOpportunityScore(b) - calculateOpportunityScore(a));
+        
+        if (validOpportunities.length === 0) {
+          setError('No se pudieron obtener oportunidades válidas');
+        } else {
+          setOpportunities(validOpportunities);
+        }
       } catch (error) {
-        console.error('Error fetching opportunities:', error);
+        console.error('Error obteniendo oportunidades:', error);
+        setError('Error al cargar las oportunidades de mercado');
+      } finally {
         setIsLoading(false);
       }
     };
 
     fetchOpportunities();
-    const interval = setInterval(fetchOpportunities, 60000); // Actualizar cada minuto
-
+    
+    // Actualizar cada 5 minutos
+    const interval = setInterval(fetchOpportunities, 5 * 60 * 1000);
+    
     return () => clearInterval(interval);
   }, []);
 

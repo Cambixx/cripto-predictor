@@ -22,6 +22,8 @@ import { PortfolioPage } from './pages/portfolio/PortfolioPage'
 import { AnalyticsPage } from './pages/analytics/AnalyticsPage'
 import { ReportsPage } from './pages/reports/ReportsPage'
 import { AlertsPage } from './pages/alerts/AlertsPage'
+import { AdvancedAnalyticsDashboard } from './components/AdvancedAnalyticsDashboard'
+import { FiGrid, FiTrendingUp, FiBarChart2, FiPieChart, FiFileText, FiBell, FiActivity } from 'react-icons/fi'
 
 // Configuración del tema
 const config: ThemeConfig = {
@@ -259,6 +261,17 @@ const theme = extendTheme(
 )
 
 function App() {
+  // Opciones del menú principal
+  const menuItems = [
+    { name: 'Dashboard', icon: <FiGrid />, path: '/dashboard' },
+    { name: 'Mercado', icon: <FiTrendingUp />, path: '/market' },
+    { name: 'Analytics', icon: <FiBarChart2 />, path: '/analytics' },
+    { name: 'Portfolio', icon: <FiPieChart />, path: '/portfolio' },
+    { name: 'Reportes', icon: <FiFileText />, path: '/reports' },
+    { name: 'Alertas', icon: <FiBell />, path: '/alerts' },
+    { name: 'Análisis Avanzado', icon: <FiActivity />, path: '/advanced' },
+  ];
+
   return (
     <ChakraProvider theme={theme}>
       <Router>
@@ -273,11 +286,13 @@ function App() {
           <Container maxW="container.xl" py={8}>
             <Routes>
               <Route path="/" element={<DashboardPage />} />
+              <Route path="/dashboard" element={<DashboardPage />} />
               <Route path="/market" element={<MarketPage />} />
-              <Route path="/portfolio" element={<PortfolioPage />} />
               <Route path="/analytics" element={<AnalyticsPage />} />
+              <Route path="/portfolio" element={<PortfolioPage />} />
               <Route path="/reports" element={<ReportsPage />} />
               <Route path="/alerts" element={<AlertsPage />} />
+              <Route path="/advanced" element={<AdvancedAnalyticsDashboard />} />
             </Routes>
           </Container>
         </Box>
